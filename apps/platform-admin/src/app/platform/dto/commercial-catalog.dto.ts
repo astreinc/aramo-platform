@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsObject, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateBy, ValidateIf } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsIn, IsInt, IsObject, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateBy, ValidateIf } from 'class-validator';
 import { billingProductsShapeErrors } from '@aramo/subscription';
 
 /**
@@ -81,7 +81,25 @@ export class UpdateCatalogDraftDto {
    * commitment, billed monthly, web only), or null to remove the annual term.
    */
   @IsOptional() @IsInt() @Min(1) @Max(100_000_000) annual_commit_price_minor?: number | null;
+  /** SIGN-FREE-PARITY-1 S1 — the existing DAY cap on envelopes: a positive integer edits it, null removes it. */
+  @IsOptional() @IsInt() @Min(1) @Max(100_000_000) envelopes_per_day?: number | null;
+  /** SIGN-FREE-PARITY-1 S1 — allowance keys the version carries, to remove (never sign.envelopes). */
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) @MaxLength(64, { each: true }) remove_allowances?: string[];
+  /** SIGN-FREE-PARITY-1 S1 — the plan description (1..300 characters), or null to clear it. */
+  @IsOptional() @IsString() @MaxLength(300) description?: string | null;
+  /** SIGN-FREE-PARITY-1 S5 — feature entitlements: registered feature key → on / off. */
+  @IsOptional()
+  @IsObject()
+  @ValidateBy({ name: 'isFeatureEditMap', validator: { validate: (v: unknown) => isFeatureEditMap(v), defaultMessage: () => 'features must map 1..30 feature keys to true or false' } })
+  features?: Record<string, boolean>;
   @IsOptional() @IsString() @MaxLength(500) note?: string;
+}
+
+/** SIGN-FREE-PARITY-1 S5 — the 400-shape of a feature entitlement edit (the registry check is the service's). */
+export function isFeatureEditMap(v: unknown): boolean {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+  const entries = Object.entries(v as Record<string, unknown>);
+  return entries.length >= 1 && entries.length <= 30 && entries.every(([k, b]) => /^[a-z][a-z0-9_]*\.[a-z0-9_]{1,60}$/.test(k) && typeof b === 'boolean');
 }
 
 export interface CatalogVersionTermsDto {
@@ -108,6 +126,14 @@ export interface CatalogVersionTermsDto {
   billing_terms: { term: 'MONTHLY' | 'ANNUAL_COMMIT'; list_price_minor: number; commitment_months: number | null }[];
   /** Billing terms — true when the version carries explicit terms. */
   explicit_terms: boolean;
+  /** SIGN-FREE-PARITY-1 S1 — the DAY cap on envelopes (null = none). */
+  envelopes_per_day: number | null;
+  /** SIGN-FREE-PARITY-1 S1 — every allowance key the version carries. */
+  allowance_keys: string[];
+  /** SIGN-FREE-PARITY-1 S1 — the plan description in the version content. */
+  description: string | null;
+  /** SIGN-FREE-PARITY-1 S5 — the feature entitlements of the version. */
+  features: { feature_key: string; enabled: boolean }[];
 }
 
 export interface CatalogOpenRequestDto {

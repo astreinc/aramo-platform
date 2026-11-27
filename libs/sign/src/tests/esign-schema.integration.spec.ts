@@ -60,7 +60,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
     await container?.stop();
   });
 
-  it('creates the sign schema with its fifty-nine tables', async () => {
+  it('creates the sign schema with its sixty-three tables', async () => {
     const r = await db.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'sign'`,
     );
@@ -142,6 +142,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
         'SignUserSettings',
         'SignAppIssueReport',
         'SignUserFavorite',
+        // SIGN-FREE-PARITY-1 S7 — a user's own folders and what they hold.
+        'SignUserFolder',
+        'SignUserFolderItem',
+        // SIGN-FREE-PARITY-1 S6 — connected cloud storage accounts and pending OAuth connects.
+        'SignCloudConnection',
+        'SignCloudOAuthState',
         // Aramo Sign Mobile M-A13 R-1b — the append-only corrected reissue.
         'ExecutedDocumentReissue',
         'ExecutionCertificateReissue',

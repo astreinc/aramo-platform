@@ -14,6 +14,8 @@ import {
   EsignService,
   type IssuedSession,
   type ReminderLimits,
+  type AutoReminderOutcome,
+  type SendRiskVerdict,
   SIGNER_LINK_MESSAGING_PORT,
   SIGNING_NOTIFICATION_PORT,
   type SignerLinkMessagingPort,
@@ -113,7 +115,15 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
   // Sign Mobile M-A3 §6 — `opts.expected_revision` (the sender's If-Match) is
   // checked under the envelope row lock in the send transaction. (The 4th
   // parameter is the port's typed actor, unused inside sign-service.)
-  async sendEnvelope(tenant_id: string, envelope_id: string, actor_ref?: string, _actor?: SignatureActor, opts: { expected_revision?: number } = {}): Promise<EnvelopeSummary> {
+  // SIGN-FREE-PARITY-1 S4 — `opts.auto_reminders` (the Sign console only) records the send-time
+  // check verdict and plans the first automatic reminder in the send transaction.
+  async sendEnvelope(
+    tenant_id: string,
+    envelope_id: string,
+    actor_ref?: string,
+    _actor?: SignatureActor,
+    opts: { expected_revision?: number; auto_reminders?: { send_verdict: SendRiskVerdict } } = {},
+  ): Promise<EnvelopeSummary> {
     const env = await this.repo.getEnvelope(tenant_id, envelope_id);
     // Aramo Sign Mobile M-A12 D-1 (amends M-A5 §4.4) — signing is always free: a SELF
     // envelope is not counted against the sign.envelopes allowance, so the "no sends left"
@@ -242,6 +252,25 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
     const { sessions } = await this.service.remindSigner(tenant_id, envelope_id, actor_ref ?? env.created_by, signer_id, opts);
     await this.dispatchReminders(tenant_id, envelope_id, sessions);
     return this.summarize(tenant_id, envelope_id);
+  }
+
+  // SIGN-FREE-PARITY-1 S4 (FP-R5) — one automatic reminder (the worker). The engine decides
+  // under the envelope row lock (compare-and-set on the planned time, the send-time verdict,
+  // the reminder limits); the new links go out exactly like a sender reminder's.
+  async sendAutoReminder(tenant_id: string, envelope_id: string, planned_at: Date, now: Date = new Date()): Promise<AutoReminderOutcome> {
+    const { outcome, sessions } = await this.service.sendAutoReminder(tenant_id, envelope_id, planned_at, now);
+    if (sessions.length > 0) await this.dispatchReminders(tenant_id, envelope_id, sessions);
+    return outcome;
+  }
+
+  // S4 — the open envelopes whose planned automatic reminder is due (the worker's sweep).
+  async dueAutoReminders(now: Date, limit: number): Promise<Array<{ tenant_id: string; envelope_id: string; planned_at: Date }>> {
+    return this.service.dueAutoReminders(now, limit);
+  }
+
+  // S4 — the sender's per-envelope switch (draft or open envelope).
+  async setAutoReminders(tenant_id: string, envelope_id: string, enabled: boolean, opts: { expected_revision?: number } = {}): Promise<void> {
+    await this.service.setAutoReminders(tenant_id, envelope_id, enabled, opts);
   }
 
   private async dispatchReminders(tenant_id: string, envelope_id: string, sessions: IssuedSession[]): Promise<void> {

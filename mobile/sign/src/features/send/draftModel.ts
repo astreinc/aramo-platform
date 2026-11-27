@@ -10,6 +10,7 @@ import {
   MAX_SIGNERS,
   parseFieldCondition,
   type FieldCondition,
+  type AutoRemindersView,
   SIGN_SUBJECT_PREFIX,
 } from '@aramo/sign-client';
 
@@ -126,6 +127,8 @@ export interface DraftRecipient {
   readonly identityCheck?: IdentityCheck | null;
   /** True when identityCheck was changed here (only then is it sent). */
   readonly identityDirty?: boolean;
+  /** SIGN-FREE-PARITY-1 S3 — ask for a code sent to their email before signing (link signers). */
+  readonly emailOtp?: boolean;
   readonly messaging?: RecipientMessaging;
   /** True when messaging still has to be saved (its own route, after the recipients). */
   readonly messagingDirty?: boolean;
@@ -167,6 +170,10 @@ export interface SendDraftPayload {
   readonly allowDelegation?: boolean;
   /** The server's allow_delegation as last read (the PATCH carries a change only). */
   readonly serverAllowDelegation?: boolean;
+  /** SIGN-FREE-PARITY-1 S4 — automatic reminders (absent: on, the server default). */
+  readonly autoRemindersEnabled?: boolean;
+  /** The server's auto_reminders.enabled as last read (absent: an older server; nothing is sent). */
+  readonly serverAutoRemindersEnabled?: boolean;
   /**
    * FIELD-PARITY-1 P3 S-5 (ruling R-3) — the server's sender_filled_fields_enabled as last
    * read: the settings sheet offers sender-filled (and read-only) only while it is true.
@@ -262,6 +269,8 @@ export interface ServerRecipient {
   readonly witnessForSignerId: string | null;
   readonly accessCodeSet: boolean;
   readonly identityCheck: IdentityCheck | null;
+  /** SIGN-FREE-PARITY-1 S3 — the server's `email_otp_required`. */
+  readonly emailOtp: boolean;
 }
 export interface ServerField {
   /** The stored field id (sent back with a preserved engine-type field, M-A6 §2). */
@@ -313,6 +322,8 @@ export interface ServerEnvelope {
   readonly signingLinkValidDays: number | null;
   readonly envelopeExpiresAt: string | null;
   readonly allowDelegation: boolean;
+  /** SIGN-FREE-PARITY-1 S4 — automatic reminders (null from an older server). */
+  readonly autoReminders: AutoRemindersView | null;
   readonly documents: readonly ServerDocument[];
   readonly recipients: readonly ServerRecipient[];
   readonly fields: readonly ServerField[];
@@ -348,6 +359,19 @@ function asCopyDelivery(v: unknown): CopyDelivery | null {
   return DELIVERIES.includes(v as CopyDelivery) ? (v as CopyDelivery) : null;
 }
 
+/** SIGN-FREE-PARITY-1 S4 — the detail's auto_reminders (null when absent: an older server). */
+export function autoRemindersOf(v: unknown): AutoRemindersView | null {
+  if (v === null || typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o['enabled'] !== 'boolean') return null;
+  return {
+    enabled: o['enabled'],
+    sent_count: num(o['sent_count']) ?? 0,
+    max_count: num(o['max_count']) ?? 0,
+    next_at: typeof o['next_at'] === 'string' ? (o['next_at'] as string) : null,
+  };
+}
+
 /** Read the sender detail defensively (its document and recipient items are untyped in OpenAPI). */
 export function parseEnvelope(raw: unknown): ServerEnvelope {
   const o = rec(raw);
@@ -365,6 +389,7 @@ export function parseEnvelope(raw: unknown): ServerEnvelope {
     envelopeExpiresAt:
       typeof o['envelope_expires_at'] === 'string' ? (o['envelope_expires_at'] as string) : null,
     allowDelegation: o['allow_delegation'] === true,
+    autoReminders: autoRemindersOf(o['auto_reminders']),
     documents: arr('documents').map((d) => ({
       id: str(d['id']),
       title: str(d['title'], 'Document'),
@@ -387,6 +412,7 @@ export function parseEnvelope(raw: unknown): ServerEnvelope {
           r['identity_verification_method'] === 'KBA'
             ? (r['identity_verification_method'] as IdentityCheck)
             : null,
+        emailOtp: r['email_otp_required'] === true,
       }))
       // Signing recipients in signing order, then copy recipients (M-A5 §1.6: a copy
       // recipient takes no part in the order and may come back without one).
@@ -547,6 +573,7 @@ export function payloadFromServer(
     ...(r.kind === 'WITNESS' ? { witnessForKey: r.witnessForSignerId ? keyOf(r.witnessForSignerId) : null } : {}),
     ...(r.accessCodeSet ? { accessCodeSet: true } : {}),
     ...(r.identityCheck ? { identityCheck: r.identityCheck } : {}),
+    ...(r.emailOtp ? { emailOtp: true } : {}),
   }));
   const { fields, preservedFields, fieldsPending } = editorFieldsFromServer(env.fields, pagesByDoc, keyOf, (_f, i) => `srv-${i}`);
   const generated = defaultSubject({ documents, recipients });
@@ -561,6 +588,9 @@ export function payloadFromServer(
       fields,
       ...(preservedFields.length > 0 ? { preservedFields } : {}),
       ...(env.allowDelegation ? { allowDelegation: true, serverAllowDelegation: true } : {}),
+      ...(env.autoReminders !== null
+        ? { autoRemindersEnabled: env.autoReminders.enabled, serverAutoRemindersEnabled: env.autoReminders.enabled }
+        : {}),
       ...(env.senderFilledFieldsEnabled ? { senderFilledEnabled: true } : {}),
       etag,
       dirty: CLEAN,

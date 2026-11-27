@@ -100,6 +100,9 @@
     "apps/sign-service/src/app/esign-http.controller.ts": "SS",
     "apps/sign-service/src/app/billing/esign-billing.controller.ts": "AP",
     "apps/sign-service/src/app/sender/esign-sender.controller.ts": "AP",
+    "apps/sign-service/src/app/cloud-storage/cloud-storage.controller.ts": "AP",
+    "apps/sign-service/src/app/folders/sign-folders.controller.ts": "AP",
+    "apps/sign-service/src/app/personal/sender-phone-step-up.controller.ts": "AP",
     "apps/sign-service/src/app/retention/sign-retention.controller.ts": "AP",
     "apps/sign-service/src/app/branding/sign-branding.controller.ts": "AP",
     "apps/sign-service/src/app/branding/sign-branding-public.controller.ts": "PZ",
@@ -198,6 +201,11 @@
   },
   "routeOverrides": [
     {
+      "method": "GET",
+      "path": "/v1/sign/sender/cloud-storage/*/callback",
+      "class": "PZ"
+    },
+    {
       "method": "POST",
       "path": "/v1/sign/signing/exchange",
       "class": "PZ"
@@ -285,6 +293,16 @@
     {
       "method": "POST",
       "path": "/v1/sign/signing/verification/sms-otp/verify",
+      "class": "PZ"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sign/signing/verification/email-otp/send",
+      "class": "PZ"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sign/signing/verification/email-otp/verify",
       "class": "PZ"
     },
     {

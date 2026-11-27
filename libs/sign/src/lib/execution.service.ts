@@ -448,19 +448,28 @@ export class ExecutionService implements ExecutionProducerPort {
   // Feature-Parity §1.9 — "Recipient verification: SMS one-time code to +1•••••••23,
   // verified <time>" per signer, from RECIPIENT_OTP_VERIFIED ledger events (the masked
   // number only). The last verification of each signer is printed.
+  // SIGN-FREE-PARITY-1 S3 — one line per method: "Recipient verification: email one-time code to
+  // j***@example.com, verified <time>" (the masked address only). A signer asked for both codes
+  // gets both lines.
   private async recipientVerifications(tenant_id: string, envelope_id: string): Promise<Map<string, string[]>> {
     const events = await this.prisma.signatureEvent.findMany({
       where: { tenant_id, envelope_id, event_type: RECIPIENT_OTP_VERIFIED_EVENT },
       orderBy: [{ occurred_at: 'asc' }, { id: 'asc' }],
       select: { signer_id: true, payload: true, occurred_at: true },
     });
-    const out = new Map<string, string[]>();
+    const bySigner = new Map<string, Map<string, string>>();
     for (const e of events) {
       if (e.signer_id === null) continue;
       const p = (e.payload ?? {}) as Record<string, unknown>;
-      const phone = typeof p['phone'] === 'string' ? ` to ${p['phone']}` : '';
-      out.set(e.signer_id, [`Recipient verification: SMS one-time code${phone}, verified ${e.occurred_at.toISOString()}`]);
+      const byEmail = p['method'] === 'EMAIL_OTP';
+      const to = byEmail ? (typeof p['email'] === 'string' ? ` to ${p['email']}` : '') : typeof p['phone'] === 'string' ? ` to ${p['phone']}` : '';
+      const line = `Recipient verification: ${byEmail ? 'email' : 'SMS'} one-time code${to}, verified ${e.occurred_at.toISOString()}`;
+      const lines = bySigner.get(e.signer_id) ?? new Map<string, string>();
+      lines.set(byEmail ? 'EMAIL_OTP' : 'SMS_OTP', line);
+      bySigner.set(e.signer_id, lines);
     }
+    const out = new Map<string, string[]>();
+    for (const [signer, lines] of bySigner) out.set(signer, [...lines.values()]);
     return out;
   }
 

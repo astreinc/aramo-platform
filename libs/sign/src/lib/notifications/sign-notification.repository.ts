@@ -114,6 +114,8 @@ export interface PurgeCounts {
   devices_deleted: number;
   notifications_deleted: number;
   preferences_deleted: number;
+  // SIGN-FREE-PARITY-1 S6 — connected cloud storage accounts (tokens deleted with the row).
+  cloud_connections_deleted: number;
 }
 
 type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0];
@@ -457,12 +459,18 @@ export class SignNotificationRepository {
       const devices = await tx.signPushDevice.deleteMany({ where });
       const notifications = await tx.signUserNotification.deleteMany({ where });
       const preferences = await tx.signNotificationPreference.deleteMany({ where });
+      // SIGN-FREE-PARITY-1 S6 — connected storage accounts and pending connects (convenience
+      // data). The provider grant is not revoked here (no network inside the transaction):
+      // the encrypted tokens are deleted, so Aramo Sign can no longer use them.
+      const cloud = await tx.signCloudConnection.deleteMany({ where });
+      await tx.signCloudOAuthState.deleteMany({ where });
       const counts: PurgeCounts = {
         devices_revoked: live.length,
         push_jobs_cancelled: cancelled,
         devices_deleted: devices.count,
         notifications_deleted: notifications.count,
         preferences_deleted: preferences.count,
+        cloud_connections_deleted: cloud.count,
       };
       await tx.signConvenienceDataPurge.create({ data: { id: randomUUID(), ...where, reason, ...counts } });
       return counts;

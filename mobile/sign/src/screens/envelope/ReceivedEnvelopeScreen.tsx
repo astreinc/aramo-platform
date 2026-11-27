@@ -46,6 +46,8 @@ import type { RootStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
 
 import { ReportSheet, type ReportSendResult } from './ReportSheet';
+import { MoveToFolderSheet } from '../../features/folders/FolderSheets';
+import type { FolderTarget } from '../../features/folders/foldersApi';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ReceivedEnvelope'>;
@@ -74,6 +76,8 @@ export interface ReceivedEnvelopeViewProps {
   readonly downloadBusy?: boolean;
   /** M-A7 §5.2 — "Report this envelope" (every received envelope). */
   readonly onReport?: () => void;
+  /** SIGN-FREE-PARITY-1 S7 — "Move to folder" (the user's own folders). */
+  readonly onMoveToFolder?: () => void;
 }
 
 /** Presentational: every value shown comes from the inbox item itself. */
@@ -89,6 +93,7 @@ export function ReceivedEnvelopeView({
   onDownload,
   downloadBusy,
   onReport,
+  onMoveToFolder,
 }: ReceivedEnvelopeViewProps) {
   const t = useTheme();
   const facts: [string, string][] = [];
@@ -175,6 +180,9 @@ export function ReceivedEnvelopeView({
       ) : null}
       {/* M-A17 — "Delete from my inbox" for every received item, added or listed
           automatically, any state (report still needs a binding). */}
+      {onMoveToFolder ? (
+        <Button testID="received-move-to-folder" title="Move to folder" variant="text" disabled={!online} onPress={onMoveToFolder} />
+      ) : null}
       <Button testID="received-delete" title="Delete from my inbox" variant="text" disabled={!online} onPress={onRemove} />
       {onReport && hasBindingActions(item) ? (
         <Button
@@ -206,6 +214,7 @@ export function ReceivedEnvelopeScreen({ route, navigation }: Props) {
   const sharer = useShare();
   const saver = useSaveCopy();
   const [reportOpen, setReportOpen] = useState(false);
+  const [moving, setMoving] = useState<FolderTarget | null>(null);
   const [reporting, setReporting] = useState(false);
   const item = findInboxItem(inbox.data, inboxItemId);
   // W2 — a discovered item's handle is re-issued on every inbox read; once a fresh read no
@@ -301,7 +310,9 @@ export function ReceivedEnvelopeScreen({ route, navigation }: Props) {
         onDownload={() => saver.save(receivedShareTarget(item))}
         downloadBusy={saver.busy}
         onReport={() => setReportOpen(true)}
+        onMoveToFolder={() => setMoving({ kind: 'inbox', id: item.id, subject: item.subject, folderId: item.folder_id ?? null })}
       />
+      <MoveToFolderSheet target={moving} onClose={() => setMoving(null)} />
       <ReportSheet
         visible={reportOpen}
         busy={reporting}

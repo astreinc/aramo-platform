@@ -6,7 +6,7 @@ import { createDraftStore } from '../../../state/draftStore';
 import { createEncryptedStore } from '../../../state/encryptedStore';
 import { memoryFiles, memoryKv, nodeAesGcm } from '../../../testing/fakes';
 import { createDocumentBytesStore } from '../documentBytes';
-import type { DraftRecipient } from '../draftModel';
+import { autoRemindersOf, type DraftRecipient } from '../draftModel';
 import {
   changeKind,
   recipientsToWire,
@@ -61,6 +61,24 @@ describe('B2 — recipients on the wire', () => {
     expect(kept).not.toHaveProperty('identity_verification_method');
     expect(set).toMatchObject({ access_code: '4821', identity_verification_method: 'KBA' });
     expect(cleared).toMatchObject({ access_code: null, identity_verification_method: null });
+  });
+
+  // SIGN-FREE-PARITY-1 S3 — the email code: sent once set (on or off), omitted otherwise, never
+  // for a recipient who does not sign through a link; a kind change away from the link kinds drops it.
+  it('the email code goes for link signers once set; a copy recipient never carries it', () => {
+    const [on, off, untouched, cc] = recipientsToWire([
+      r('a', 'SIGNER', { emailOtp: true }),
+      r('b', 'WITNESS', { emailOtp: false, witnessForKey: 'a' }),
+      r('c', 'SIGNER'),
+      r('d', 'RECEIVES_COPY', { copyDelivery: 'ON_COMPLETION', emailOtp: true }),
+    ]);
+    expect(on).toMatchObject({ email_otp_required: true });
+    expect(off).toMatchObject({ email_otp_required: false });
+    expect(untouched).not.toHaveProperty('email_otp_required');
+    expect(cc).not.toHaveProperty('email_otp_required');
+    const out = changeKind([r('a', 'SIGNER', { emailOtp: true })], 'a', 'RECEIVES_COPY');
+    expect(out.ok && out.recipients[0]!.emailOtp).toBe(false);
+    expect(sendFeaturesOf({ features: { email_otp: true } }).emailCode).toBe(true);
   });
 
   it('a recipient leaving the link kinds drops its code, identity check, text delivery and any witness pointing at it', () => {
@@ -211,5 +229,46 @@ describe('B2 — sync', () => {
     c.setMessaging(dana.key, { channel: 'WHATSAPP', phone: '0123' });
     expect(await c.sync()).toBe(false);
     expect(c.snapshot.error).toBe('Use the international format, for example +14155550123');
+  });
+});
+
+// SIGN-FREE-PARITY-1 S4 — automatic reminders while drafting: default on, and the switch goes to
+// the server only when it changed here.
+describe('S4 — automatic reminders in the draft', () => {
+  it('default on sends nothing; turned off goes once; turned back on goes once', async () => {
+    const { c, server } = setup();
+    await c.open();
+    await c.addDocument({ title: 'Lease', filename: 'Lease.pdf', bytes: PDF });
+    c.addRecipient({ name: 'Dana Lee', email: 'dana@example.com' });
+    c.setSubject('Lease');
+    expect(await c.sync()).toBe(true);
+    for (const call of server.calls.filter((x) => x.method === 'PATCH')) expect(call.body).not.toHaveProperty('auto_reminders_enabled');
+
+    c.setAutoReminders(false);
+    expect(await c.sync()).toBe(true);
+    expect(server.calls.filter((x) => x.method === 'PATCH').at(-1)!.body).toMatchObject({ auto_reminders_enabled: false });
+    expect(server.envelope!.auto_reminders_enabled).toBe(false);
+    expect(c.snapshot.draft!.payload).toMatchObject({ autoRemindersEnabled: false, serverAutoRemindersEnabled: false });
+
+    c.setSubject('Lease 2026');
+    expect(await c.sync()).toBe(true);
+    expect(server.calls.filter((x) => x.method === 'PATCH').at(-1)!.body).not.toHaveProperty('auto_reminders_enabled');
+
+    c.setAutoReminders(true);
+    expect(await c.sync()).toBe(true);
+    expect(server.calls.filter((x) => x.method === 'PATCH').at(-1)!.body).toMatchObject({ auto_reminders_enabled: true });
+    expect(server.envelope!.auto_reminders_enabled).toBe(true);
+  });
+
+  it('reads the server setting defensively', () => {
+    expect(autoRemindersOf({ enabled: true, sent_count: 2, max_count: 5, next_at: '2026-12-01T10:00:00.000Z' })).toEqual({
+      enabled: true,
+      sent_count: 2,
+      max_count: 5,
+      next_at: '2026-12-01T10:00:00.000Z',
+    });
+    expect(autoRemindersOf({ enabled: false })).toEqual({ enabled: false, sent_count: 0, max_count: 0, next_at: null });
+    expect(autoRemindersOf(undefined)).toBeNull();
+    expect(autoRemindersOf({ enabled: 'yes' })).toBeNull();
   });
 });

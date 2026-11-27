@@ -36,6 +36,8 @@ const ROOT = resolve(__dirname, '../../..');
 // ExecutedDocument migration (never hardcode a single-migration list). FIELD-PARITY-1 P3
 // (20261122200000_field_parity_1_p3_field_types_settings: new field types + setting columns;
 // additive response members on the sender detail and the signer view) is applied by this scan.
+// SIGN-FREE-PARITY-1 S4 (20261127110000_sign_free_parity_1_auto_reminders: automatic reminder
+// columns; the additive `auto_reminders` member on the sender detail) is applied by this scan too.
 function esignMigrations(): string[] {
   const dir = resolve(ROOT, 'libs/sign/prisma/migrations');
   return readdirSync(dir)
@@ -75,6 +77,10 @@ const SIGN_WEB_PACT_FILE = resolve(ROOT, 'pact/pacts/sign-web-sign-service.json'
 // `detect=all` (more types, reason / confidence, skipped_pages; openapi/sign.yaml
 // DocumentFieldSuggestions). No migration; without the query the answer is the M-A14 one, so no
 // recorded interaction changes.
+// SIGN-FREE-PARITY-1 S7 — migration 20261127120000_sign_free_parity_1_user_folders (applied with
+// every Sign migration above) adds SignUserFolder / SignUserFolderItem. The sender list and
+// detail and every inbox item gain `folder_id` (null when the user has no folders, as in every
+// recorded interaction): an added member only, so no interaction changes and nothing is seeded.
 const ESIGN_WEB_PACT_FILE = resolve(ROOT, 'pact/pacts/sign-workspace-sign-service.json');
 // Aramo Sign Mobile — the native app → sign-service pact (directive §4 B-12). Its
 // consumer `sign-mobile` also has a separate pact with aramo-auth-service (verify.ts).

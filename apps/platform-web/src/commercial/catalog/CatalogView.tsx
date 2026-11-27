@@ -5,7 +5,7 @@ import { ApiError, Button, Checkbox, Input, hasScope, useOptionalToast, type Ses
 import { ChainPreview, CommercialRequestDialog, RequestField, SkeletonPanel, shortId, type CommercialDiffRow } from '../../components';
 import { COMMERCIAL_PERMISSIONS as CP } from '../../components/permissions';
 
-import { catalogApi, type Catalog, type CatalogActionType, type CatalogPlan, type CatalogVersion } from './catalog-api';
+import { catalogApi, type Catalog, type CatalogActionType, type CatalogDraftEdits, type CatalogPlan, type CatalogVersion } from './catalog-api';
 import {
   CATALOG_PRODUCTS,
   NO_PLANS_LINE,
@@ -41,6 +41,8 @@ import {
 import { BillingProductsEditor } from './BillingProductsEditor';
 import { BillingProductsPanel } from './BillingProductsPanel';
 import { NewPlanDialog } from './NewPlanDialog';
+import { PlanTermsEditor } from './PlanTermsEditor';
+import { offersFreeAdoption } from './plan-terms-model';
 import { RegionalPricesEditor, type RegionalPriceEdit } from './RegionalPricesEditor';
 import { STORE_LISTING_LIMITS, billingEditorErrors, billingPayload, initialBillingRows, sellsInCountries, sellsInStores, type BillingEditorRow, type StoreListingInput } from './billing-products-model';
 import { pendingPlanCreateLine, planCreateApplyable } from './new-plan-model';
@@ -103,6 +105,8 @@ export function CatalogView({ session }: { readonly session: Session }) {
   const [listing, setListing] = useState<StoreListingInput>({ name: '', description: '' });
   const [previewStops, setPreviewStops] = useState<string[] | null>(null);
   const [stopCountries, setStopCountries] = useState<string[]>([]);
+  // SIGN-FREE-PARITY-1 S1 — a FREE plan's publish may move its open subscriptions (opt-in).
+  const [adoptFree, setAdoptFree] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [newPlanOpen, setNewPlanOpen] = useState(false);
   const saving = useRef<Promise<unknown> | null>(null);
@@ -313,6 +317,26 @@ export function CatalogView({ session }: { readonly session: Session }) {
     if (saving.current === run) saving.current = null;
   };
 
+  /** SIGN-FREE-PARITY-1 S1 / S5 — saves an edit of the version's other terms. DRAFT + catalog manager only. */
+  const savePlanTerms = async (edits: CatalogDraftEdits): Promise<void> => {
+    if (!version || version.status !== 'DRAFT' || !canDraft) return;
+    const prior = saving.current;
+    const run = (async () => {
+      if (prior) await prior;
+      const current = latest.current;
+      if (!current || current.id !== version.id) return;
+      await catalogApi.updateDraft(current.id, current.content_checksum, edits);
+      setSaveError(null);
+      await load();
+    })();
+    saving.current = run;
+    try {
+      await run;
+    } finally {
+      if (saving.current === run) saving.current = null;
+    }
+  };
+
   const createDraft = async (from: CatalogVersion): Promise<void> => {
     if (!plan) return;
     setBusy(true);
@@ -341,6 +365,7 @@ export function CatalogView({ session }: { readonly session: Session }) {
     setListing({ name: plan.name.slice(0, STORE_LISTING_LIMITS.name_max), description: '' });
     setPreviewStops(null);
     setStopCountries([]);
+    setAdoptFree(false);
     if (kind === 'publish') {
       try {
         const detail = await catalogApi.getVersion(version.id);
@@ -367,6 +392,7 @@ export function CatalogView({ session }: { readonly session: Session }) {
         evidence: evidence.trim(),
         idempotency_key: newIdempotencyKey(),
         ...(dialog.kind === 'publish' && billingRows !== null ? { billing_products: billingPayload(billingRows, screenshotId, listing, stopCountries) } : {}),
+        ...(dialog.kind === 'publish' && adoptFree && offersFreeAdoption(dialog.version.terms) ? { adopt_free_subscriptions: true } : {}),
       });
       setDialog(null);
       await load();
@@ -613,6 +639,7 @@ export function CatalogView({ session }: { readonly session: Session }) {
                     </div>
                   ) : null}
                   <RegionalPricesEditor version={version} canDraft={canDraft} onSave={saveRegional} />
+                  <PlanTermsEditor version={version} canDraft={canDraft} onSave={savePlanTerms} />
                   <BillingProductsPanel key={version.id} versionId={version.id} canRetry={hasScope(session, CP.catalogPublish)} canReadBilling={hasScope(session, CP.billingRead)} />
                   {version.status === 'DRAFT' && lastPublished(plan, version) ? (
                     <>
@@ -730,6 +757,15 @@ export function CatalogView({ session }: { readonly session: Session }) {
         >
           <RequestField label="Reason" value={reason} onChange={setReason} placeholder="Why this change is needed" multiline />
           <RequestField label="Evidence" value={evidence} onChange={setEvidence} placeholder="Document, ticket or call notes reference" />
+          {dialog.kind === 'publish' && offersFreeAdoption(dialog.version.terms) ? (
+            <label className="pc-field" data-testid="adopt-free">
+              <span>
+                <Checkbox unstyled checked={adoptFree} onChange={(e) => setAdoptFree(e.target.checked)} aria-label="Move existing Free subscribers to this version" />{' '}
+                Move existing Free subscribers to this version
+              </span>
+              <span className="pc-addons__intro">Only when nothing gets worse for them. If any subscriber would lose something, the whole publish is refused.</span>
+            </label>
+          ) : null}
           {dialog.kind === 'publish' && billingRows !== null ? (
             <BillingProductsEditor
               planId={dialog.plan.id}

@@ -29,6 +29,8 @@ export const SIGN_ACCESS_CODE_FEATURE = 'sign.access_code';
 export const SIGN_SMS_DELIVERY_FEATURE = 'sign.sms_delivery';
 export const SIGN_WHATSAPP_DELIVERY_FEATURE = 'sign.whatsapp_delivery';
 export const SIGN_SMS_OTP_FEATURE = 'sign.sms_otp';
+// SIGN-FREE-PARITY-1 S3 — the email one-time code for signers (every plan).
+export const SIGN_EMAIL_OTP_FEATURE = 'sign.email_otp';
 // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 + A1 — recipient identity
 // verification (government ID; KBA). Dark until the PO flips them (A1.2).
 export const SIGN_ID_VERIFICATION_FEATURE = 'sign.id_verification';
@@ -38,6 +40,9 @@ export const SIGN_QES_FEATURE = 'sign.qes';
 export const SIGN_INDIA_ESTAMP_FEATURE = 'sign.india_estamp';
 // Aramo-Sign-Feature-Parity-Program-Directive v1.0 (LOCKED) §1.13 — basic reports (plans B+).
 export const SIGN_REPORTS_FEATURE = 'sign.reports';
+// SIGN-FREE-PARITY-1 S6 — cloud storage, one launch key per provider (dark). The key names
+// live once in @aramo/sign-client (CLOUD_PROVIDER_FEATURE_KEYS); see cloud-storage/.
+export { CLOUD_PROVIDER_FEATURE_KEYS as SIGN_CLOUD_STORAGE_FEATURES } from '@aramo/sign-client';
 
 @Injectable()
 export class SignFeatureGate {

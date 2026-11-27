@@ -8,6 +8,7 @@ import { EnvelopeList } from './pages/EnvelopeList';
 import { EnvelopeSent, EnvelopeWizard, NewEnvelope } from './pages/EnvelopeWizard';
 import { BillingPanel } from './pages/Billing';
 import { InboxPage } from './pages/Inbox';
+import { FolderPage, FoldersPage } from './folders';
 import { PendingInboxClaim } from './PendingInboxClaim';
 import { SettingsPage } from './pages/Settings';
 import { ActivityPage, ContactsPage, DocumentsPage } from './pages/WorkspacePages';
@@ -197,6 +198,9 @@ function Gate({ expected, actual, scopes }: { expected: Workspace; actual: Works
         {/* Retention and Purge (DocuSign parity) — the organization's Deleted folder. */}
         <Route path="envelopes/deleted" element={<EnvelopeList folder="deleted" />} />
         <Route path="envelopes/:id" element={<EnvelopeDetail />} />
+        {/* SIGN-FREE-PARITY-1 S7 — the user's own folders. */}
+        <Route path="folders" element={<FoldersPage />} />
+        <Route path="folders/:id" element={<FolderPage />} />
         <Route path="envelopes/:id/edit" element={<EnvelopeWizard />} />
         <Route path="envelopes/:id/prepare" element={<EnvelopeWizard prepare />} />
         <Route path="envelopes/:id/sent" element={<EnvelopeSent />} />

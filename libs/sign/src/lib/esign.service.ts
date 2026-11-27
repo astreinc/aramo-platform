@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { DELEGATE_NAME_MAX, DELEGATE_REASON_MAX, hostedSessionRefusal, isValidEmail, remindableSigners, selfSignTarget, sessionIssueRefusal, signingRecipients as sharedSigningRecipients, signerClearRefusal, signerMayStillSign } from '@aramo/sign-client';
+import { AUTO_REMINDER_DAY_MS, AUTO_REMINDER_SETTABLE_STATUSES, DELEGATE_NAME_MAX, DELEGATE_REASON_MAX, hostedSessionRefusal, isValidEmail, remindableSigners, selfSignTarget, sessionIssueRefusal, signingRecipients as sharedSigningRecipients, signerClearRefusal, signerMayStillSign } from '@aramo/sign-client';
 import { fieldValueRefusal, parseFieldCondition, type FieldCondition, type FieldOptions } from '@aramo/sign-fields';
 
 import { PrismaService } from './prisma/prisma.service.js';
@@ -41,8 +41,18 @@ import {
   type EvidenceManifestSignerPort,
   type SignedEvidenceManifest,
 } from './ports/evidence-manifest-signer.port.js';
-import { applyReminderLimits, reminderHistory, type ReminderLimits } from './reminder-limits.js';
-import { AttestedNameRequiredError, SessionIssueRefusedError } from './domain/envelope-contract-errors.js';
+import { applyReminderLimits, reminderHistory, SIGN_REMINDER_LIMITS, type ReminderLimits } from './reminder-limits.js';
+import { AttestedNameRequiredError, ReminderLimitError, SessionIssueRefusedError } from './domain/envelope-contract-errors.js';
+import {
+  AUTO_REMINDER_ACTOR_TYPE,
+  AUTO_REMINDER_CADENCE,
+  autoReminderAfterSent,
+  autoReminderDueAt,
+  autoReminderOnEnable,
+  autoReminderVerdictAllows,
+  type AutoReminderOutcome,
+  type SendRiskVerdict,
+} from './auto-reminders.js';
 import {
   COPY_DELIVERY_ISSUED_EVENT,
   HOSTED_SESSION_STARTED_EVENT,
@@ -259,7 +269,15 @@ export class EsignService {
   // under the envelope row lock in the send transaction. M-A3 §3 — the sender
   // message is recorded in the ENVELOPE_SENT ledger payload as sender-supplied text
   // (never in the evidence manifest fields or the certificate).
-  async send(tenant_id: string, envelope_id: string, actor_ref: string, opts: { expected_revision?: number } = {}): Promise<{ envelope: unknown; sessions: IssuedSession[]; copies: IssuedCopyAccess[] }> {
+  // SIGN-FREE-PARITY-1 S4 — `auto_reminders` (the Sign console send path only): records the
+  // send-time check verdict and, when the sender left automatic reminders on, plans the first
+  // one (sent + 2 days). Omitted (ATS / integration sends): nothing is planned.
+  async send(
+    tenant_id: string,
+    envelope_id: string,
+    actor_ref: string,
+    opts: { expected_revision?: number; auto_reminders?: { send_verdict: SendRiskVerdict } } = {},
+  ): Promise<{ envelope: unknown; sessions: IssuedSession[]; copies: IssuedCopyAccess[] }> {
     const full = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
     // M-A5 §1.4 — at least one signing recipient (a copy recipient never signs).
     if (signingRecipients(full.signers).length === 0) throw new SigningSessionInvalidError('envelope has no signers');
@@ -280,6 +298,15 @@ export class EsignService {
         ...(message?.message ? { payload: { sender_message: message.message, sender_message_source: 'SENDER_SUPPLIED' } } : {}),
       });
       await tx.signatureEnvelope.update({ where: { id: envelope_id }, data: { expires_at: envelopeExpiresAt(now) } });
+      if (opts.auto_reminders !== undefined) {
+        const setting = await tx.signatureEnvelope.findFirstOrThrow({ where: { id: envelope_id, tenant_id }, select: { auto_reminders_enabled: true, sent_at: true } });
+        // A SELF envelope invites no one, so there is no one to remind.
+        const planned = full.envelope_mode !== 'SELF' && setting.auto_reminders_enabled ? autoReminderDueAt(setting.sent_at ?? now, 0) : null;
+        await tx.signatureEnvelope.update({
+          where: { id: envelope_id },
+          data: { send_risk_verdict: opts.auto_reminders.send_verdict, auto_reminder_count: 0, next_auto_reminder_at: planned },
+        });
+      }
       const sessions: IssuedSession[] = [];
       // Multi-Signer §3/§4 — PARALLEL: every signer gets a live link now. SEQUENTIAL:
       // only the first signer (lowest signing_order); each next signer is invited when
@@ -1391,76 +1418,180 @@ export class EsignService {
     // can never mint a live capability for an envelope voided concurrently.
     const sessions = await this.prisma.$transaction(async (tx) => {
       const status = await this.repo.lockEnvelope(tx, tenant_id, envelope_id);
-      if (status !== 'SENT' && status !== 'IN_PROGRESS') {
-        throw new ReminderNotAllowedError(`envelope status ${status} is not remindable`);
-      }
-      // Client Rule Consolidation C3 (D-1) — who may be reminded is @aramo/sign-client's
-      // remindableSigners, read here from the rows under the lock (the C1 actions.remind and
-      // can_remind use the same function): copy recipients and in-person signers are never
-      // reminded; SEQUENTIAL — only the first unsigned signer; a witness once its signer signed.
-      const everyone = await tx.signer.findMany({
-        where: { tenant_id, envelope_id },
-        select: { id: true, status: true, signing_order: true, recipient_kind: true, witness_for_signer_id: true },
-      });
-      const incomplete = sharedSigningRecipients(everyone).filter((s) => signerMayStillSign(s.status));
-      if (incomplete.length === 0) {
-        throw new ReminderNotAllowedError('no incomplete signer to remind');
-      }
-      const env = await tx.signatureEnvelope.findFirstOrThrow({ where: { id: envelope_id, tenant_id }, select: { routing_mode: true } });
-      const eligible = remindableSigners({ status, routing_mode: env.routing_mode }, everyone);
-      let targets = signer_id === undefined ? eligible : eligible.filter((s) => s.id === signer_id);
-      if (targets.length === 0) {
-        throw new ReminderNotAllowedError(
-          env.routing_mode === 'SEQUENTIAL' ? 'only the signer whose turn it is can be reminded' : 'that signer has already signed or is not on this envelope',
-        );
-      }
-      if (opts.limits !== undefined) {
-        const history = await reminderHistory(tx, tenant_id, envelope_id, now, opts.limits);
-        const verdict = applyReminderLimits(history, targets.map((s) => s.id), now, opts.limits);
-        if (verdict.refused !== undefined) throw verdict.refused;
-        targets = targets.filter((s) => verdict.allowed.includes(s.id));
-      }
-      const minted: IssuedSession[] = [];
-      for (const signer of targets) {
-        // Revoke prior live sessions FIRST → one live capability per signer.
-        await tx.signingSession.updateMany({
-          where: {
-            tenant_id,
-            envelope_id,
-            signer_id: signer.id,
-            status: { in: ['ISSUED', 'EXCHANGED', 'ACTIVE'] },
-          },
-          data: { status: 'REVOKED', revoked_at: now },
-        });
-        const tok = generateSigningToken();
-        const sessionId = randomUUID();
-        await tx.signingSession.create({
-          data: {
-            id: sessionId,
-            tenant_id,
-            envelope_id,
-            signer_id: signer.id,
-            token_hash: tok.hash,
-            status: 'ISSUED',
-            expires_at: signingSessionExpiresAt(now),
-            origin: 'LINK',
-          },
-        });
-        minted.push({ session_id: sessionId, signer_id: signer.id, raw_token: tok.raw });
-      }
-      // M-A3 §7 — the reminded signers are recorded so the per-signer cooldown can
-      // be counted from the ledger.
-      await this.repo.appendEvent(tx, {
-        tenant_id,
-        envelope_id,
-        event_type: 'SIGNATURE_REMINDER_SENT',
-        actor_type: 'SERVICE',
-        actor_ref,
-        payload: { signer_ids: targets.map((s) => s.id) },
-      });
-      return minted;
+      return this.remindInTx(tx, { tenant_id, envelope_id, status, now, ...(signer_id !== undefined ? { signer_id } : {}), ...(opts.limits !== undefined ? { limits: opts.limits } : {}), actor: { type: 'SERVICE', ref: actor_ref } });
     });
     return { sessions };
+  }
+
+  // The reminder itself, under the caller's envelope row lock (`status` read under it). Shared
+  // by the sender's reminder and the automatic one (SIGN-FREE-PARITY-1 S4), so both reach the
+  // same signers, count against the same limits and replace the signer link the same way.
+  private async remindInTx(
+    tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
+    input: { tenant_id: string; envelope_id: string; status: string; now: Date; signer_id?: string; limits?: ReminderLimits; actor: { type: 'SERVICE' | 'SYSTEM'; ref?: string }; automatic?: boolean },
+  ): Promise<IssuedSession[]> {
+    const { tenant_id, envelope_id, status, now, signer_id } = input;
+    if (status !== 'SENT' && status !== 'IN_PROGRESS') {
+      throw new ReminderNotAllowedError(`envelope status ${status} is not remindable`);
+    }
+    // Client Rule Consolidation C3 (D-1) — who may be reminded is @aramo/sign-client's
+    // remindableSigners, read here from the rows under the lock (the C1 actions.remind and
+    // can_remind use the same function): copy recipients and in-person signers are never
+    // reminded; SEQUENTIAL — only the first unsigned signer; a witness once its signer signed.
+    const everyone = await tx.signer.findMany({
+      where: { tenant_id, envelope_id },
+      select: { id: true, status: true, signing_order: true, recipient_kind: true, witness_for_signer_id: true },
+    });
+    const incomplete = sharedSigningRecipients(everyone).filter((s) => signerMayStillSign(s.status));
+    if (incomplete.length === 0) {
+      throw new ReminderNotAllowedError('no incomplete signer to remind');
+    }
+    const env = await tx.signatureEnvelope.findFirstOrThrow({ where: { id: envelope_id, tenant_id }, select: { routing_mode: true } });
+    const eligible = remindableSigners({ status, routing_mode: env.routing_mode }, everyone);
+    let targets = signer_id === undefined ? eligible : eligible.filter((s) => s.id === signer_id);
+    if (targets.length === 0) {
+      throw new ReminderNotAllowedError(
+        env.routing_mode === 'SEQUENTIAL' ? 'only the signer whose turn it is can be reminded' : 'that signer has already signed or is not on this envelope',
+      );
+    }
+    if (input.limits !== undefined) {
+      const history = await reminderHistory(tx, tenant_id, envelope_id, now, input.limits);
+      const verdict = applyReminderLimits(history, targets.map((s) => s.id), now, input.limits);
+      if (verdict.refused !== undefined) throw verdict.refused;
+      targets = targets.filter((s) => verdict.allowed.includes(s.id));
+    }
+    const minted: IssuedSession[] = [];
+    for (const signer of targets) {
+      // Revoke prior live sessions FIRST → one live capability per signer.
+      await tx.signingSession.updateMany({
+        where: {
+          tenant_id,
+          envelope_id,
+          signer_id: signer.id,
+          status: { in: ['ISSUED', 'EXCHANGED', 'ACTIVE'] },
+        },
+        data: { status: 'REVOKED', revoked_at: now },
+      });
+      const tok = generateSigningToken();
+      const sessionId = randomUUID();
+      await tx.signingSession.create({
+        data: {
+          id: sessionId,
+          tenant_id,
+          envelope_id,
+          signer_id: signer.id,
+          token_hash: tok.hash,
+          status: 'ISSUED',
+          expires_at: signingSessionExpiresAt(now),
+          origin: 'LINK',
+        },
+      });
+      minted.push({ session_id: sessionId, signer_id: signer.id, raw_token: tok.raw });
+    }
+    // M-A3 §7 — the reminded signers are recorded so the per-signer cooldown can
+    // be counted from the ledger. S4 — an automatic reminder is marked as such.
+    await this.repo.appendEvent(tx, {
+      tenant_id,
+      envelope_id,
+      event_type: 'SIGNATURE_REMINDER_SENT',
+      actor_type: input.actor.type,
+      ...(input.actor.ref !== undefined ? { actor_ref: input.actor.ref } : {}),
+      payload: { signer_ids: targets.map((s) => s.id), ...(input.automatic === true ? { automatic: true } : {}) },
+    });
+    return minted;
+  }
+
+  // ── SIGN-FREE-PARITY-1 S4 (FP-R5) — automatic reminders ──────────────────────────────
+
+  // The worker's due query: open envelopes whose planned automatic reminder time has come.
+  async dueAutoReminders(now: Date, limit = 50): Promise<Array<{ tenant_id: string; envelope_id: string; planned_at: Date }>> {
+    const rows = await this.prisma.signatureEnvelope.findMany({
+      where: { status: { in: ['SENT', 'IN_PROGRESS'] }, auto_reminders_enabled: true, next_auto_reminder_at: { lte: now } },
+      orderBy: { next_auto_reminder_at: 'asc' },
+      take: limit,
+      select: { id: true, tenant_id: true, next_auto_reminder_at: true },
+    });
+    return rows.flatMap((r) => (r.next_auto_reminder_at === null ? [] : [{ tenant_id: r.tenant_id, envelope_id: r.id, planned_at: r.next_auto_reminder_at }]));
+  }
+
+  // One automatic reminder. Compare-and-set on the planned time under the envelope row lock:
+  // when two processes pick the same envelope, or the sender changed the setting meanwhile,
+  // only the one that still sees `planned_at` sends. No IP and no re-check: the send-time
+  // verdict recorded on the envelope decides (FP-R5). It counts against the same reminder
+  // limits as the sender's own reminders; a limit refusal moves the plan to when the limit
+  // allows, without counting. Returns the issued sessions (raw tokens ONCE) for dispatch.
+  async sendAutoReminder(tenant_id: string, envelope_id: string, planned_at: Date, now: Date = new Date()): Promise<{ outcome: AutoReminderOutcome; sessions: IssuedSession[] }> {
+    const max = AUTO_REMINDER_CADENCE.max_count;
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const status = await this.repo.lockEnvelope(tx, tenant_id, envelope_id);
+        const row = await tx.signatureEnvelope.findFirstOrThrow({
+          where: { id: envelope_id, tenant_id },
+          select: { auto_reminders_enabled: true, auto_reminder_count: true, next_auto_reminder_at: true, send_risk_verdict: true, envelope_mode: true },
+        });
+        if (!row.auto_reminders_enabled || row.next_auto_reminder_at === null || row.next_auto_reminder_at.getTime() !== planned_at.getTime()) {
+          return { outcome: { kind: 'skipped' } as const, sessions: [] };
+        }
+        const stopReason =
+          status !== 'SENT' && status !== 'IN_PROGRESS'
+            ? `envelope status ${status}`
+            : row.envelope_mode === 'SELF'
+              ? 'self_sign'
+              : row.auto_reminder_count >= max
+                ? 'max_reached'
+                : !autoReminderVerdictAllows(row.send_risk_verdict)
+                  ? 'no_send_verdict'
+                  : null;
+        if (stopReason !== null) {
+          await tx.signatureEnvelope.update({ where: { id: envelope_id }, data: { next_auto_reminder_at: null } });
+          return { outcome: { kind: 'stopped', reason: stopReason } as const, sessions: [] };
+        }
+        const sessions = await this.remindInTx(tx, { tenant_id, envelope_id, status, now, limits: SIGN_REMINDER_LIMITS, actor: { type: AUTO_REMINDER_ACTOR_TYPE }, automatic: true });
+        const sent_count = row.auto_reminder_count + 1;
+        const next_at = autoReminderAfterSent(now, sent_count);
+        await tx.signatureEnvelope.update({ where: { id: envelope_id }, data: { auto_reminder_count: sent_count, next_auto_reminder_at: next_at } });
+        return { outcome: { kind: 'sent', sent_count, next_at } as const, sessions };
+      });
+    } catch (err) {
+      // Refused by a reminder limit (a sender reminder went out recently): try again when the
+      // limit allows. No one to remind right now (e.g. a sequential in-person turn): try again
+      // after the usual 3 days. Neither counts as a sent reminder.
+      const retry =
+        err instanceof ReminderLimitError
+          ? { next_at: err.retryAt, reason: err.reason }
+          : err instanceof ReminderNotAllowedError
+            ? { next_at: new Date(now.getTime() + AUTO_REMINDER_CADENCE.every_days * AUTO_REMINDER_DAY_MS), reason: 'no_one_to_remind_now' }
+            : null;
+      if (retry === null) throw err;
+      const moved = await this.prisma.signatureEnvelope.updateMany({
+        where: { id: envelope_id, tenant_id, next_auto_reminder_at: planned_at, auto_reminders_enabled: true },
+        data: { next_auto_reminder_at: retry.next_at },
+      });
+      return { outcome: moved.count === 1 ? { kind: 'rescheduled', next_at: retry.next_at, reason: retry.reason } : { kind: 'skipped' }, sessions: [] };
+    }
+  }
+
+  // The sender turns automatic reminders on or off — while drafting or after sending (no
+  // DRAFT-only trigger guards this column). Turned off: nothing more is planned. Turned on
+  // after sending: the next one on the plain cadence (or now, when that time has passed), only
+  // while a send-time verdict is recorded and fewer than 5 were sent. `expected_revision` is
+  // the sender's If-Match, checked under the row lock.
+  async setAutoReminders(tenant_id: string, envelope_id: string, enabled: boolean, opts: { expected_revision?: number } = {}, now: Date = new Date()): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const { status } = await this.repo.lockEnvelopeRevision(tx, tenant_id, envelope_id, opts.expected_revision);
+      if (!(AUTO_REMINDER_SETTABLE_STATUSES as readonly string[]).includes(status)) {
+        throw new ReminderNotAllowedError(`envelope status ${status} has no automatic reminders`);
+      }
+      const row = await tx.signatureEnvelope.findFirstOrThrow({
+        where: { id: envelope_id, tenant_id },
+        select: { envelope_mode: true, sent_at: true, auto_reminder_count: true, send_risk_verdict: true },
+      });
+      if (row.envelope_mode === 'SELF') throw new ReminderNotAllowedError('self_sign_no_reminders');
+      const open = status === 'SENT' || status === 'IN_PROGRESS';
+      const next =
+        enabled && open && row.sent_at !== null && autoReminderVerdictAllows(row.send_risk_verdict) ? autoReminderOnEnable(row.sent_at, row.auto_reminder_count, now) : null;
+      await tx.signatureEnvelope.update({ where: { id: envelope_id }, data: { auto_reminders_enabled: enabled, next_auto_reminder_at: next } });
+    });
   }
 }
 

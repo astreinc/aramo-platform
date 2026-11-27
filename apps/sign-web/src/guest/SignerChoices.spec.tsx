@@ -178,7 +178,7 @@ describe('SMS code before the document opens (Feature-Parity §1.9)', () => {
         verified
           ? json({ session_id: 's1', envelope_id: 'env-1', signer_id: 'sig-1' })
           : json({ error: { code: 'INSUFFICIENT_PERMISSIONS', details: { reason: 'recipient_verification_required' } } }, 403),
-      verification: () => json({ required: true, verified: false, locked: false, phone: '+1•••••••23' }),
+      verification: () => json({ required: true, verified, locked: false, phone: '+1•••••••23' }),
       'verification/sms-otp/send': () => json({ sent: true, verified: false, phone: '+1•••••••23' }),
       'verification/sms-otp/verify': () => {
         if (calls.filter((c) => c.path === 'verification/sms-otp/verify').length === 1) {
@@ -194,11 +194,44 @@ describe('SMS code before the document opens (Feature-Parity §1.9)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Text me a code' }));
     fireEvent.change(await screen.findByLabelText('Code'), { target: { value: '000000' } });
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-    expect(await screen.findByText("That code isn't right. Check it and try again.")).toBeInTheDocument();
+    expect(await screen.findByText('That code isn’t right. Check it and try again.')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Code'), { target: { value: '123456' } });
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     expect(await screen.findByRole('button', { name: 'Review document' })).toBeInTheDocument();
     expect(calls.filter((c) => c.path === 'verification/sms-otp/verify').map((c) => c.body['code'])).toEqual(['000000', '123456']);
+  });
+
+  // SIGN-FREE-PARITY-1 S3 — the email code: the card says the code goes to their email; a
+  // signer asked for both enters the SMS code, then the email code.
+  it('both codes: texts a code, then emails one, then opens the document', async () => {
+    let sms = false;
+    let email = false;
+    const calls = transport({
+      exchange: () =>
+        sms && email
+          ? json({ session_id: 's1', envelope_id: 'env-1', signer_id: 'sig-1' })
+          : json({ error: { code: 'INSUFFICIENT_PERMISSIONS', details: { reason: 'recipient_verification_required', method: sms ? 'EMAIL_OTP' : 'SMS_OTP' } } }, 403),
+      verification: () =>
+        json({ required: true, verified: sms && email, locked: false, method: sms ? 'EMAIL_OTP' : 'SMS_OTP', phone: '+1•••••••23', email: 'j***@example.com' }),
+      'verification/sms-otp/send': () => json({ sent: true, verified: false, phone: '+1•••••••23' }),
+      'verification/sms-otp/verify': () => ((sms = true), json({ verified: true })),
+      'verification/email-otp/send': () => json({ sent: true, verified: false, email: 'j***@example.com' }),
+      'verification/email-otp/verify': () => ((email = true), json({ verified: true })),
+    });
+    render(<App />);
+    expect(await screen.findByTestId('sg-sms-code')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Text me a code' }));
+    fireEvent.change(await screen.findByLabelText('Code'), { target: { value: '111111' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByTestId('sg-email-code')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Enter the code we email you' })).toBeInTheDocument();
+    expect(screen.getByText(/We’ll email a 6-digit code to j\*\*\*@example\.com/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Email me a code' }));
+    expect(await screen.findByText(/We sent a 6-digit code to j\*\*\*@example\.com/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Code'), { target: { value: '222222' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByRole('button', { name: 'Review document' })).toBeInTheDocument();
+    expect(calls.filter((c) => c.path === 'verification/email-otp/verify').map((c) => c.body['code'])).toEqual(['222222']);
   });
 
   it('locked out → its own end screen', async () => {

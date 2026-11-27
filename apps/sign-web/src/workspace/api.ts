@@ -10,7 +10,9 @@ import {
   type AnyFieldType,
   type FieldTypeOn,
   type InboxActions,
+  type PhoneStepUpStatus,
   type SenderActions,
+  type AutoRemindersView,
 } from '@aramo/sign-client';
 
 // Client Rule Consolidation C3 — the limits, patterns, status sets and refusal copy live once
@@ -85,6 +87,8 @@ export interface SenderContext {
     sms_delivery?: boolean;
     whatsapp_delivery?: boolean;
     sms_otp?: boolean;
+    // SIGN-FREE-PARITY-1 S3 — the email code for signers (every plan).
+    email_otp?: boolean;
     id_verification?: boolean;
     kba?: boolean;
   };
@@ -108,6 +112,9 @@ export interface SenderContext {
   template_studio?: boolean;
   // TEMPLATE-PRODUCT-1 §8.5 — "Use as it is" (the person may approve templates).
   template_use_as_is?: boolean;
+  // SIGN-FREE-PARITY-1 S6 — the cloud storage providers offered (server-decided; read through
+  // @aramo/sign-client cloudProvidersOf). Absent on an older backend = none.
+  cloud_storage?: string[];
 }
 
 export interface Summary {
@@ -169,6 +176,8 @@ export interface EnvelopeRow {
   // Client Rule Consolidation C1 — what the caller may do (the server decides; read it with
   // senderActionsOf, which treats an absent object as nothing allowed).
   actions?: SenderActions;
+  // SIGN-FREE-PARITY-1 S7 — the signed-in user's own folder holding it (absent from an older server = none).
+  folder_id?: string | null;
 }
 
 // A short label for an envelope sent by another Aramo application, or null for Sign's own.
@@ -233,6 +242,8 @@ export interface Recipient {
   access_code_locked?: boolean;
   // §1.9 — the identity check required of this recipient (null = none).
   identity_verification_method?: IdentityVerificationMethod | null;
+  // SIGN-FREE-PARITY-1 S3 — a code sent to the recipient's email is asked before signing.
+  email_otp_required?: boolean;
   // §1.17 — the original recipient of a delegated slot.
   delegated_from?: { name: string | null; email: string | null; delegated_at: string } | null;
 }
@@ -261,6 +272,8 @@ export interface RecipientWrite {
   access_code?: string | null;
   // A value sets the check, null clears it, omitted keeps it.
   identity_verification_method?: IdentityVerificationMethod | null;
+  // SIGN-FREE-PARITY-1 S3 — true asks for an email code, false removes it, omitted keeps it.
+  email_otp_required?: boolean;
 }
 
 // E.164 and the access code rule (@aramo/sign-client — the server's own copy).
@@ -414,6 +427,8 @@ export interface EnvelopeDetail {
   routing_mode?: RoutingMode;
   // Feature-Parity §1.17 — signers may hand the envelope to someone else (set in DRAFT).
   allow_delegation?: boolean;
+  // SIGN-FREE-PARITY-1 S4 — automatic reminders (absent from an older server).
+  auto_reminders?: AutoRemindersView;
   next_signer_id?: string | null;
   // Sign Mobile M-A3 §3 — the sender's plain-text message to recipients (DRAFT only; null = none).
   message?: string | null;
@@ -424,6 +439,8 @@ export interface EnvelopeDetail {
   purge?: PurgeInfo | null;
   // Client Rule Consolidation C1 — what the caller may do (read it with senderActionsOf).
   actions?: SenderActions;
+  // SIGN-FREE-PARITY-1 S7 — the signed-in user's own folder holding it (absent from an older server = none).
+  folder_id?: string | null;
   // FIELD-PARITY-1 P3 S-5 (ruling R-3) — sender-filled fields switched on (the server flag;
   // absent / false: Prepare does not offer them).
   sender_filled_fields_enabled?: boolean;
@@ -874,6 +891,28 @@ export const accountApi = {
     apiClient.post<{ state: 'closed'; closed_at: string }>('/v1/sign/account/close', reason !== undefined && reason.trim() !== '' ? { confirm: 'CLOSE', reason: reason.trim() } : { confirm: 'CLOSE' }),
 };
 
+// SIGN-FREE-PARITY-1 S2 — the sender's own phone step-up (/v1/sign/personal/step-up).
+// The server decides availability (dark unless SIGN_SENDER_PHONE_STEP_UP=1) and checks the code.
+export interface StepUpSent {
+  sent: true;
+  phone_masked: string;
+  expires_in_seconds: number;
+  resend_after_seconds: number;
+}
+
+export const stepUpApi = {
+  status: () => apiClient.get<PhoneStepUpStatus>('/v1/sign/personal/step-up/status'),
+  send: (phone?: string) => apiClient.post<StepUpSent>('/v1/sign/personal/step-up/send', phone !== undefined && phone.trim() !== '' ? { phone: phone.trim() } : {}),
+  verify: (code: string) => apiClient.post<{ verified: true }>('/v1/sign/personal/step-up/verify', { code }),
+};
+
+/** The refusal's details.reason (null for a non-API error). */
+export function refusalReason(e: unknown): string | null {
+  if (!(e instanceof ApiError)) return null;
+  const reason = e.details?.['reason'];
+  return typeof reason === 'string' ? reason : null;
+}
+
 // Aramo-Sign-Mobile-Amendment-M-A7 §3 — privacy requests (deletion, access, export,
 // correction). Signed in: the caller's own requests. Public (no session): the
 // /delete-account flow — start (always 202), verify (the token from the link's URL
@@ -908,7 +947,8 @@ export const privacyApi = {
 export const senderApi = {
   context: () => apiClient.get<SenderContext>(`${BASE}/context`),
   summary: () => apiClient.get<Summary>(`${BASE}/summary`),
-  list: (q: { tab?: string; q?: string; days?: number; folder?: 'deleted' } = {}) => {
+  // `folder`: 'deleted' (the Deleted folder) or one of the user's own folder ids (S7).
+  list: (q: { tab?: string; q?: string; days?: number; folder?: string } = {}) => {
     const p = new URLSearchParams();
     if (q.folder !== undefined) p.set('folder', q.folder);
     if (q.tab !== undefined && q.tab !== 'all') p.set('tab', q.tab);
@@ -942,6 +982,9 @@ export const senderApi = {
   recipients: (id: string, recipients: RecipientWrite[]) => apiClient.put<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/recipients`, { recipients }),
   // Feature-Parity §1.17 — allow signers to delegate (DRAFT; refused while not available).
   setAllowDelegation: (id: string, allow_delegation: boolean) => apiClient.patch<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}`, { allow_delegation }),
+  // SIGN-FREE-PARITY-1 S4 — automatic reminders on or off (while drafting and after sending).
+  setAutoReminders: (id: string, auto_reminders_enabled: boolean) =>
+    apiClient.patch<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/reminders`, { auto_reminders_enabled }),
   // Feature-Parity §1.7–§1.9 — text delivery and the SMS code, per recipient (no envelope revision change).
   messaging: (id: string) => apiClient.get<{ envelope_id: string; recipients: RecipientMessaging[] }>(`${BASE}/envelopes/${enc(id)}/messaging`),
   setMessaging: (id: string, signerId: string, body: { delivery_channel: DeliveryChannel | null; sms_otp_required: boolean; phone_e164?: string }) =>
@@ -1169,10 +1212,13 @@ export interface InboxItem {
   can_download: boolean;
   // Client Rule Consolidation C1 — what the user may do with this item (read it with inboxActionsOf).
   actions?: InboxActions;
+  // SIGN-FREE-PARITY-1 S7 — the user's own folder holding it (absent from an older server = none).
+  folder_id?: string | null;
 }
 
 export const inboxApi = {
-  list: () => apiClient.get<{ waiting: InboxItem[]; completed: InboxItem[]; other: InboxItem[] }>('/v1/sign/inbox'),
+  // SIGN-FREE-PARITY-1 S7 — `folder`: one of the user's own folder ids.
+  list: (folder?: string) => apiClient.get<{ waiting: InboxItem[]; completed: InboxItem[]; other: InboxItem[] }>(folder === undefined ? '/v1/sign/inbox' : `/v1/sign/inbox?folder=${encodeURIComponent(folder)}`),
   claim: (token: string) => apiClient.post<{ id: string }>('/v1/sign/inbox/claim', { token }),
   sign: (id: string) => apiClient.post<{ signing_url: string }>(`/v1/sign/inbox/${encodeURIComponent(id)}/sign`),
   signedCopy: (id: string) => apiClient.post<{ download_url: string }>(`/v1/sign/inbox/${encodeURIComponent(id)}/signed-copy`),

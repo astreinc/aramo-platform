@@ -14,6 +14,8 @@ import type { Request } from 'express';
 
 import { PersonalLegalStatusService, legalAcceptanceRequired } from '../legal/personal-legal-status.service.js';
 
+import { SenderPhoneStepUpService } from './sender-phone-step-up.service.js';
+
 // Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED §4 / §6 — the Personal
 // sending gate on the sender console. It runs ONLY for a PERSONAL tenant; Business
 // tenants and every ATS / Sign API path never reach it.
@@ -189,6 +191,8 @@ export class PersonalSendGate {
     // Personal legal documents: a current APPROVED version not yet accepted by
     // this sender blocks sending until accepted in the workspace.
     @Optional() private readonly legal?: PersonalLegalStatusService,
+    // SIGN-FREE-PARITY-1 S2 — self-serve phone step-up (dark: SIGN_SENDER_PHONE_STEP_UP).
+    @Optional() private readonly phoneStepUp?: SenderPhoneStepUpService,
   ) {}
 
   /** Refuse `legal_acceptance_required` while the sender owes an acceptance of a current document. */
@@ -261,7 +265,13 @@ export class PersonalSendGate {
     const state = await this.risk.riskStateOf(tenant.id);
     if (state?.phone_verified_at != null || state?.step_up_cleared_by === 'review') return;
     // Without SMS the step-up routes the account to review (identity decides).
-    const after = await this.risk.requireStepUp(tenant.id, reason, now);
+    // SIGN-FREE-PARITY-1 S2: with the self-serve switch on and an SMS provider for the
+    // sender's number, the step stays with the sender (phone_verification_required) and
+    // they clear it with a texted code; off (the default) = the call is unchanged.
+    const after =
+      this.phoneStepUp?.smsAvailable(state?.phone_e164 ?? null) === true
+        ? await this.risk.requireStepUp(tenant.id, reason, now, { self_serve: true }, { sms_available: true })
+        : await this.risk.requireStepUp(tenant.id, reason, now);
     throw personalGateError(after.state === 'review' || after.review_pending ? 'personal_review_pending' : 'phone_verification_required', requestId);
   }
 }

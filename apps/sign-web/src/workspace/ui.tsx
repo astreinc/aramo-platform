@@ -174,6 +174,8 @@ const ICONS: Record<string, string> = {
   swap: 'M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4',
   ext: 'M7 17 17 7M9 7h8v8',
   trash: 'M4 7h16M10 11v6M14 11v6M5 7l1 13h12l1-13M9 7V4h6v3',
+  // SIGN-FREE-PARITY-1 S7 — a user's folder.
+  folder: 'M3 6h6l2 2h10v11H3z',
 };
 
 export function Icon({ name, size = 16 }: { name: keyof typeof ICONS | string; size?: number }) {

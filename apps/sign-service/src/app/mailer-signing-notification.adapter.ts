@@ -158,6 +158,19 @@ function renderBase(n: SigningNotification): Rendered {
         action: url ? { label: 'View in Aramo Sign', url } : undefined,
       };
     }
+    case 'SIGNER_EMAIL_CODE': {
+      // SIGN-FREE-PARITY-1 S3 — the code is in the body only: mailers log the subject.
+      const minutes = n.code_ttl_minutes ?? 10;
+      return {
+        subject: `Your code to sign ${doc}`,
+        lines: [
+          `Your code to open "${doc}" is ${n.one_time_code ?? ''}.`,
+          `Enter it on the signing page. It works for ${minutes} minutes.`,
+          "If you didn't ask for this code, you can ignore this email.",
+        ],
+        footnote: 'Never share this code. Aramo Sign will never ask you for it.',
+      };
+    }
     case 'IDENTITY_VERIFICATION_FAILED': {
       // Feature-Parity §1.9 — sender only. No document data is ever included.
       const url = safeUrl(n.console_url);

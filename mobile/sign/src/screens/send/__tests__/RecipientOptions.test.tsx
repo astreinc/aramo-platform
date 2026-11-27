@@ -22,6 +22,7 @@ const ALL_ON: SendFeatures = {
   sms: true,
   whatsapp: true,
   smsCode: true,
+  emailCode: true,
   idCheck: true,
   kba: true,
 };

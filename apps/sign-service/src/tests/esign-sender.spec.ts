@@ -19,7 +19,8 @@ import { SenderEnvelopeService } from '../app/sender/sender-envelope.service.js'
 
 // M-A12 W1-C.2 — Find in document (textLayerOf) has the source route's read scope.
 // M-A14 R-3 — Auto suggest fields (fieldSuggestionsOf) has the text-layer route's read scope.
-const READ = ['context', 'summary', 'list', 'detail', 'events', 'source', 'textLayerOf', 'fieldSuggestionsOf', 'executed', 'evidence', 'documents', 'activity'] as const;
+// SIGN-FREE-PARITY-1 S7 — moving an envelope into / out of the caller's own folder needs read only.
+const READ = ['context', 'summary', 'list', 'detail', 'events', 'source', 'textLayerOf', 'fieldSuggestionsOf', 'executed', 'evidence', 'documents', 'activity', 'moveToFolder', 'removeFromFolder'] as const;
 // Sign Unified Product S-1 — contacts and member administration carry their own Sign permissions.
 const CONTACTS = ['contacts'] as const;
 // ORG-UX-1 §6 — the Sign member routes are retired (no MEMBERS group).
@@ -27,7 +28,7 @@ const CONTACTS = ['contacts'] as const;
 // Sign Mobile D-W6-3 — deleting a draft is a draft write (sign:envelope:create).
 const CREATE = ['create', 'update', 'upload', 'reorder', 'rename', 'remove', 'recipients', 'fields', 'createContact', 'updateContact', 'deleteContact', 'deleteDraft'] as const;
 // M-A5 §3.2 / §4.2 — hosted and self-sign sessions need sign:envelope:send.
-const SEND = ['send', 'remind', 'void', 'hostedSession', 'selfSignSession'] as const;
+const SEND = ['send', 'remind', 'void', 'hostedSession', 'selfSignSession', 'setAutoReminders'] as const;
 
 const handler = (name: string): object => (EsignSenderController.prototype as unknown as Record<string, object>)[name] ?? {};
 

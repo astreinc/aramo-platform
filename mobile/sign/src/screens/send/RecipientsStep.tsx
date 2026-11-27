@@ -23,6 +23,7 @@ import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { FEATURES } from '../../config/features';
 import { ContactsSheet, type PickResult } from '../../features/contacts/ContactsSheet';
+import { AUTO_REMINDER_COPY } from '@aramo/sign-client';
 import { Segments, SettingRow } from '../../features/inbox/ui';
 import {
   MAX_COPY_RECIPIENTS,
@@ -361,6 +362,16 @@ export function RecipientsStep({
           value={p?.allowDelegation === true}
           onValueChange={(v) => controller.setAllowDelegation(v)}
           testID="allow-delegation"
+        />
+      ) : null}
+      {/* SIGN-FREE-PARITY-1 S4 — automatic reminders (all plans; default on). */}
+      {signing.length > 0 ? (
+        <SettingRow
+          title={AUTO_REMINDER_COPY.label}
+          subtitle={AUTO_REMINDER_COPY.help}
+          value={p?.autoRemindersEnabled !== false}
+          onValueChange={(v) => controller.setAutoReminders(v)}
+          testID="auto-reminders"
           last
         />
       ) : null}

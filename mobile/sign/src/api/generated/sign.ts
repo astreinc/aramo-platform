@@ -959,6 +959,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/sender/envelopes/{id}/reminders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Turn automatic reminders on or off.
+         * @description SIGN-FREE-PARITY-1 S4 (FP-R5). All plans. Works while drafting and after sending (DRAFT, SENT, IN_PROGRESS); a finished envelope (COMPLETED, DECLINED, VOIDED, EXPIRED) is refused 409 ESIGN_REMINDER_NOT_ALLOWED (details.reason envelope_closed), and a self-signed one 409 (details.reason self_sign_no_reminders). Requires sign:envelope:send, plus ownership or sign:envelope:manage:all. The cadence: the first automatic reminder 2 days after sending, then every 3 days, at most 5; each replaces the signer link like a sender reminder and counts against the same reminder limits. Turned off, nothing more is planned; turned back on after sending, the next one is due on the cadence (or straight away when that time has passed). If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
+         */
+        patch: operations["setSenderEnvelopeAutoReminders"];
+        trace?: never;
+    };
     "/v1/sign/sender/envelopes/{id}/void": {
         parameters: {
             query?: never;
@@ -993,6 +1013,146 @@ export interface paths {
         get: operations["getSenderExecutedDocuments"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/cloud-storage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The offered cloud storage providers and the caller's connections.
+         * @description SIGN-FREE-PARITY-1 S6 — one row per offered provider (empty while every provider is dark), with whether the caller connected it and the account it is connected to. Connections are per user (never shared inside the organization). Requires sign:envelope:read.
+         */
+        get: operations["listSenderCloudStorage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/cloud-storage/{provider}/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start connecting a cloud storage account (returns the provider's sign-in URL).
+         * @description SIGN-FREE-PARITY-1 S6 — the client opens authorize_url (the web navigates to it; the Aramo Sign app opens it in its in-app browser). The provider returns to GET …/cloud-storage/{provider}/callback, which answers 302 to the Sign web page (return_path, default /{workspace}/settings/storage) or, for client app, to aramosign://cloud-storage, with cloud_storage=connected|cancelled|failed&provider={provider}. The pending connect lives 10 minutes and is used once. Requires sign:envelope:read. 400 details.reason invalid_client / invalid_return_path (a page outside the caller's workspace).
+         */
+        post: operations["connectSenderCloudStorage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/cloud-storage/{provider}/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The provider's OAuth redirect (browser only; answers 302).
+         * @description SIGN-FREE-PARITY-1 S6 — no session: the single-use state (stored as its sha256, bound to one tenant, user and provider, 10-minute lifetime) is the only authority. The code is exchanged server-side (PKCE S256 where the provider supports it) and the tokens are stored encrypted (AES-256-GCM). Always 302: to the return page with cloud_storage=connected|cancelled|failed&provider=…, or to /?cloud_storage=failed for an unknown or used state.
+         */
+        get: operations["senderCloudStorageCallback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/cloud-storage/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect a cloud storage account (revoke and delete the tokens).
+         * @description SIGN-FREE-PARITY-1 S6 — revokes the grant at the provider where it has a revoke endpoint (best effort; Microsoft has none) and deletes the stored tokens. Idempotent (204 when nothing was connected). Works even after the provider was switched off. Requires sign:envelope:read.
+         */
+        delete: operations["disconnectSenderCloudStorage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/cloud-storage/{provider}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Browse or search the connected storage (folders and PDF files).
+         * @description SIGN-FREE-PARITY-1 S6 — a folder's folders and PDF files (top level without folder_id), or a file-name search with q. Word files (.docx, .doc) are listed only with include_word=1 while the sender context reports word_conversion_enabled. folders=1 lists folders only (choosing where to save). 409 details.reason cloud_not_connected / cloud_reconnect_required (the grant was revoked or expired: the tokens were deleted); 502 cloud_provider_unavailable. Requires sign:envelope:read.
+         */
+        get: operations["listSenderCloudStorageItems"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/envelopes/{id}/documents/cloud-import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a document to a DRAFT envelope from connected cloud storage.
+         * @description SIGN-FREE-PARITY-1 S6 — the file is fetched server-side and goes through the SAME upload as POST …/envelopes/{id}/documents (author check, If-Match, Idempotency-Key, Word conversion, the safe-PDF pipeline, the page measure, the storage allowance); the response and its ETag are the upload's. A file over 25 MB (Word 20 MB) is refused 413 details.reason cloud_file_too_large before it is downloaded; a folder 400 cloud_not_a_file; a missing file 404 cloud_file_not_found. Requires sign:envelope:create.
+         */
+        post: operations["importSenderCloudDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/envelopes/{id}/cloud-export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save the signed copy of a COMPLETED envelope to connected cloud storage.
+         * @description SIGN-FREE-PARITY-1 S6 — the same documents and rule as GET …/envelopes/{id}/executed (COMPLETED and not purged; 409 / 410 otherwise), saved as "{title} (signed).pdf" to folder_id or, without one, to the "Aramo Sign" folder (created when missing). An existing file is never replaced (the provider numbers the copy). Google Drive saves only to the "Aramo Sign" folder (drive.file): folder_id is refused 409 details.reason cloud_folder_not_writable. include_certificate adds the execution certificate. Requires sign:envelope:read.
+         */
+        post: operations["exportSenderExecutedToCloud"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1989,6 +2149,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in user's own folders (SIGN-FREE-PARITY-1 S7).
+         * @description Per user within the tenant (FP-R8); never another user's. Session (esign consumer) only; no Sign scope required. The system Deleted folder is not listed here (list folder=deleted).
+         */
+        get: operations["listSignFolders"];
+        put?: never;
+        /**
+         * Make a folder (name 1-60 characters, unique for the user without case; at most 100 folders).
+         * @description 400 details.reason folder_name_empty, folder_name_too_long, folder_name_taken or folder_limit_reached (the rule and copy are @aramo/sign-client folders.ts).
+         */
+        post: operations["createSignFolder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/folders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete one of the user's folders. The envelopes in it are not deleted.
+         * @description SIGN-FREE-PARITY-1 S7. The folder and what it holds go; every envelope stays where it is.
+         */
+        delete: operations["deleteSignFolder"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename one of the user's folders (same name rule). Another user's folder is 404.
+         * @description SIGN-FREE-PARITY-1 S7. Session (esign consumer) only; keyed by the signed-in user.
+         */
+        patch: operations["renameSignFolder"];
+        trace?: never;
+    };
     "/v1/sign/inbox": {
         parameters: {
             query?: never;
@@ -2263,6 +2473,66 @@ export interface paths {
          * @description Aramo Sign Personal (Free) — Settings → Close account. The owner (tenant_owner) of a PERSONAL account closes it: sending stops immediately and for good; envelopes already sent stay open for their signers. The same close the operator performs, audited with the owner as the actor. Requires confirm = CLOSE (else details.reason = account_close_confirmation_required). Refused for a BUSINESS account (details.reason = business_account_close_via_organization) and for a caller who is not the owner (details.reason = not_account_owner). A PERSONAL account without a Personal risk state cannot be closed here (404, details.reason = personal_account_not_closable). Closing a closed account answers its closed state. Requires a Sign session of a tenant entitled to `sign`.
          */
         post: operations["closeSignAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/personal/step-up/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether the signed-in sender can verify their phone to clear the new-account send check.
+         * @description SIGN-FREE-PARITY-1 S2. A young PERSONAL account whose first send has more than one recipient is asked for phone assurance (send refusal details.reason = phone_verification_required). available is true only while self-serve is switched on (SIGN_SENDER_PHONE_STEP_UP=1), an SMS provider serves the number and the caller is the owner; otherwise the step-up goes to manual review as before. required is true while the phone step is outstanding. phone_masked is the number from signup, masked, or null when the sender must enter one. Requires a Sign session of a tenant entitled to `sign`.
+         */
+        get: operations["getSenderPhoneStepUpStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/personal/step-up/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Text a 6-digit code to the sender's phone.
+         * @description SIGN-FREE-PARITY-1 S2. Texts a code (valid 10 minutes) to the number from signup, or to phone when given (E.164; the same country rules as signup). A new code after 60 seconds, at most 5 a day. The code is never returned. details.reason: step_up_not_available (404, self-serve off), step_up_owner_only (403), step_up_not_required, phone_required, invalid_phone, personal_location_not_supported, phone_in_use, personal_code_rate_limited, phone_opted_out (400), step_up_sms_not_sent (503), personal_review_pending (403: no provider serves this number, so the account was sent to manual review). Requires a Sign session of a tenant entitled to `sign`.
+         */
+        post: operations["sendSenderPhoneStepUpCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/personal/step-up/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check the texted code; a correct code verifies the phone so the next send passes.
+         * @description SIGN-FREE-PARITY-1 S2. details.reason: code_invalid (attempts_remaining), code_expired, code_attempts_exceeded, step_up_not_required (400), step_up_owner_only (403), step_up_not_available (404). Requires a Sign session of a tenant entitled to `sign`.
+         */
+        post: operations["verifySenderPhoneStepUpCode"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3314,6 +3584,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/sender/envelopes/{id}/folder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Move an envelope the caller can see into one of their own folders (out of any other of theirs).
+         * @description SIGN-FREE-PARITY-1 S7. Requires sign:envelope:read and visibility of the envelope. The envelope itself never changes; an envelope is in at most one of the user's folders.
+         */
+        put: operations["moveSenderEnvelopeToFolder"];
+        post?: never;
+        /**
+         * Take an envelope out of the caller's folder (idempotent).
+         * @description SIGN-FREE-PARITY-1 S7. Requires sign:envelope:read and visibility of the envelope.
+         */
+        delete: operations["removeSenderEnvelopeFromFolder"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/sender/envelopes/{id}/delete": {
         parameters: {
             query?: never;
@@ -3429,6 +3723,30 @@ export interface paths {
          */
         post: operations["deleteFromInbox"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/inbox/{id}/folder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Move a received document into one of the user's own folders (out of any other of theirs).
+         * @description SIGN-FREE-PARITY-1 S7. The id is a claimed item's id or a discovered item's handle. Nothing else changes.
+         */
+        put: operations["moveInboxItemToFolder"];
+        post?: never;
+        /**
+         * Take a received document out of the user's folder (idempotent).
+         * @description SIGN-FREE-PARITY-1 S7. The id is a claimed item's id or a discovered item's handle.
+         */
+        delete: operations["removeInboxItemFromFolder"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3569,7 +3887,7 @@ export interface paths {
         put?: never;
         /**
          * The recipient-verification status of this signing session.
-         * @description Feature-Parity §1.9 — token-authorized. When the sender set SMS_OTP on the recipient, every other signer action (exchange, disclosure-text, document, source, disclosure, fill, complete, decline) is refused with 403 INSUFFICIENT_PERMISSIONS details.reason recipient_verification_required (or recipient_verification_locked) until a code is verified for this session.
+         * @description Feature-Parity §1.9 — token-authorized. When the sender set SMS_OTP (or, SIGN-FREE-PARITY-1 S3, EMAIL_OTP) on the recipient, every other signer action (exchange, disclosure-text, document, source, disclosure, fill, complete, decline) is refused with 403 INSUFFICIENT_PERMISSIONS details.reason recipient_verification_required (or recipient_verification_locked) until a code is verified for this session.
          */
         post: operations["getRecipientVerificationStatus"];
         delete?: never;
@@ -3612,6 +3930,46 @@ export interface paths {
          * @description Feature-Parity §1.9 — 400 otp_not_requested / otp_expired / otp_mismatch (attempts_remaining); 403 otp_code_locked (5 wrong attempts; ask for a new code) or otp_locked (3 codes used up; locked out of the envelope); 409 otp_retry. Appends RECIPIENT_OTP_VERIFIED / RECIPIENT_OTP_FAILED / RECIPIENT_OTP_LOCKED; the verification is printed on the certificate of completion.
          */
         post: operations["verifyRecipientSmsOtp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/signing/verification/email-otp/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a one-time code to the recipient's email.
+         * @description SIGN-FREE-PARITY-1 S3 — the SMS code's rules: 6 digits, valid 10 minutes, 5 attempts; at most one send per 60 seconds and 5 a day (429 INVALID_REQUEST otp_resend_cooldown / otp_daily_limit). 400 otp_not_required; 403 otp_locked after 3 codes were used up; 503 ESIGN_SEND_UNAVAILABLE otp_delivery_failed. The code is in the email body only. Appends RECIPIENT_OTP_SENT (method EMAIL_OTP, masked email).
+         */
+        post: operations["sendRecipientEmailOtp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/signing/verification/email-otp/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check the one-time code sent by email.
+         * @description SIGN-FREE-PARITY-1 S3 — as sms-otp/verify: 400 otp_not_requested / otp_expired / otp_mismatch (attempts_remaining); 403 otp_code_locked or otp_locked; 409 otp_retry. Appends RECIPIENT_OTP_VERIFIED / RECIPIENT_OTP_FAILED / RECIPIENT_OTP_LOCKED (method EMAIL_OTP); the verification is printed on the certificate of completion with the masked email.
+         */
+        post: operations["verifyRecipientEmailOtp"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3846,6 +4204,35 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        SignFolderName: {
+            /** @description Trimmed, inner white space made one space; 1-60 characters. */
+            name: string;
+        };
+        SignFolder: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** @description Envelopes the user sent in this folder. */
+            sender_items: number;
+            /** @description Documents the user received in this folder. */
+            recipient_items: number;
+        };
+        SignFolderList: {
+            items: components["schemas"]["SignFolder"][];
+            /** @description The most folders one user may have. */
+            limit: number;
+            /** @description The longest folder name. */
+            name_max: number;
+            can_create: boolean;
+        };
+        SignFolderPlacement: {
+            /** Format: uuid */
+            folder_id: string | null;
+        };
         /** @enum {string} */
         SignPurgeLevel: "DOCUMENTS" | "DOCUMENTS_AND_METADATA" | "DOCUMENTS_AND_METADATA_AND_REDACT";
         SignReportStats: {
@@ -4310,6 +4697,22 @@ export interface components {
             /** Format: date-time */
             closed_at: string | null;
         };
+        /** @description SIGN-FREE-PARITY-1 S2 — the sender's own phone step-up. */
+        SenderPhoneStepUpStatus: {
+            /** @description Self-serve phone verification is on for this account. */
+            available: boolean;
+            /** @description A phone step is outstanding (sending waits for it). */
+            required: boolean;
+            /** @description The number a code goes to, masked; null when the sender must enter one. */
+            phone_masked: string | null;
+        };
+        SenderPhoneStepUpSent: {
+            /** @enum {boolean} */
+            sent: true;
+            phone_masked: string;
+            expires_in_seconds: number;
+            resend_after_seconds: number;
+        };
         /** @description Aramo-Sign-Mobile-Amendment-M-A7 §3.1 — a privacy request as its requester sees it. */
         SignPrivacyRequest: {
             /** @example PR-7K3M-9QX2-H4TD */
@@ -4406,6 +4809,8 @@ export interface components {
                 whatsapp_delivery?: boolean;
                 /** @description Consolidated Directive v1.0 B2 — sign.sms_otp is available (the recipient enters an SMS code before acting; launch availability only, no plan rule). */
                 sms_otp?: boolean;
+                /** @description SIGN-FREE-PARITY-1 S3 — sign.email_otp is available (the recipient enters a code sent to their email before acting; every plan, launch availability only). */
+                email_otp?: boolean;
                 /** @description Consolidated Directive v1.0 B2 — sign.id_verification is available and the tenant is a BUSINESS tenant (government-ID check per recipient). */
                 id_verification?: boolean;
                 /** @description Consolidated Directive v1.0 B2 — sign.kba is available and the tenant is a BUSINESS tenant (knowledge-based questions per recipient). */
@@ -4439,6 +4844,51 @@ export interface components {
             template_use_as_is?: boolean;
             /** @description Aramo-Sign-Mobile-Amendment-M-A13 R-4 — the sender document upload accepts Word files (.docx, .doc), converted to PDF on the server. False unless SIGN_WORD_CONVERSION_ENABLED=1 and a converter is configured; the apps offer Word files only when true. */
             word_conversion_enabled?: boolean;
+            /** @description SIGN-FREE-PARITY-1 S6 (FP-R7) — the cloud storage providers offered for import and export (every plan): launch key sign.cloud_<provider> AVAILABLE, the provider's OAuth app configured and SIGN_CLOUD_TOKEN_KEY set. Empty while dark; the apps then show no cloud storage action. Absent on an older backend (read as empty). */
+            cloud_storage?: components["schemas"]["CloudStorageProvider"][];
+        };
+        /** @enum {string} */
+        CloudStorageProvider: "google_drive" | "onedrive" | "dropbox" | "box";
+        CloudStorageConnections: {
+            /** @description The offered providers only (empty while every provider is dark), in display order. */
+            providers: {
+                provider: components["schemas"]["CloudStorageProvider"];
+                /** @description The provider's name on screen (Google Drive, OneDrive, Dropbox, Box). */
+                label: string;
+                connected: boolean;
+                /** @description The connected account's email (or name), as the provider reports it. */
+                account_label: string | null;
+                /** Format: date-time */
+                connected_at: string | null;
+                /** @description Saving to a folder the user chooses works (false on Google Drive, which saves to "Aramo Sign"). */
+                folder_choice: boolean;
+            }[];
+        };
+        CloudStorageItem: {
+            id: string;
+            name: string;
+            /** @enum {string} */
+            kind: "folder" | "file";
+            mime_type: string | null;
+            size: number | null;
+            modified_at: string | null;
+        };
+        CloudStorageItems: {
+            items: components["schemas"]["CloudStorageItem"][];
+            /** @description Opaque; pass back as cursor for the next page. Null on the last page. */
+            next_cursor: string | null;
+        };
+        CloudExportResult: {
+            provider: components["schemas"]["CloudStorageProvider"];
+            folder: {
+                id: string;
+                name: string;
+            };
+            saved: {
+                /** @description The saved file's name (the provider may number it, e.g. "Offer (signed) (2).pdf"). */
+                name: string;
+                web_url: string | null;
+            }[];
         };
         /** @description TEMPLATE-PRODUCT-1 §8.5 — the Aramo templates for Aramo Sign (live defaults tagged sign). */
         SenderTemplateGallery: {
@@ -4825,6 +5275,11 @@ export interface components {
             /** @description Aramo Sign Mobile M-A12 W1-A.4 — true when the caller may open a self-sign session on this envelope now (a signing recipient bound to them, still to sign, their turn, an Aramo Sign envelope they may act on, and sign:envelope:send). Drives "Sign now"; POST /v1/sign/sender/envelopes/{id}/self-sign-session re-checks everything, including the verified email. */
             can_self_sign_now?: boolean;
             actions?: components["schemas"]["SenderEnvelopeActions"];
+            /**
+             * Format: uuid
+             * @description SIGN-FREE-PARITY-1 S7 - the signed-in user's own folder holding this item, or null.
+             */
+            folder_id?: string | null;
         };
         /** @description Envelopes the caller may see, by status, over every tab (the same visibility as the list). A status with no envelope is absent (read it as 0). */
         SenderEnvelopeCounts: {
@@ -4936,6 +5391,8 @@ export interface components {
             identity_verification_method?: "ID_VERIFICATION" | "KBA" | null;
             /** @description §1.9 — true when identity verification locked this recipient out (a document in another name, or every attempt used). */
             identity_verification_locked?: boolean;
+            /** @description SIGN-FREE-PARITY-1 S3 — the recipient enters a one-time code sent to their email before signing. */
+            email_otp_required?: boolean;
         };
         /** @description Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 — the recipient's identity-verification state. Outcome only: no document data, image or verified name is ever returned or stored (R-5). */
         SignerIdentityVerificationStatus: {
@@ -5019,6 +5476,11 @@ export interface components {
             /** @description A completed envelope the user signed, on a bound item (a discovered item's signed copy comes through the emailed link). */
             can_download: boolean;
             actions?: components["schemas"]["RecipientInboxItemActions"];
+            /**
+             * Format: uuid
+             * @description SIGN-FREE-PARITY-1 S7 - the signed-in user's own folder holding this item, or null.
+             */
+            folder_id?: string | null;
         };
         /** @description Client Rule Consolidation C1 - what the signed-in user may do with this inbox item, decided by the server (clients render it and never derive it). Always present on every item. sign equals can_sign and download equals can_download. */
         RecipientInboxItemActions: {
@@ -5159,6 +5621,19 @@ export interface components {
             device_model: string;
             screen?: string | null;
         };
+        /** @description SIGN-FREE-PARITY-1 S4 — automatic reminders: 2 days after sending, then every 3 days, at most 5 (all plans). They stop when the envelope is completed, declined, voided or expires. */
+        SenderEnvelopeAutoReminders: {
+            /** @description The sender's switch (default true; changeable while drafting and after sending). */
+            enabled: boolean;
+            sent_count: number;
+            /** @description Automatic reminders per envelope, at most (5). */
+            max_count: number;
+            /**
+             * Format: date-time
+             * @description When the next automatic reminder goes; null when none is planned (off, draft, closed, or all sent).
+             */
+            next_at: string | null;
+        };
         SenderEnvelopeDetail: {
             /** Format: uuid */
             id: string;
@@ -5184,12 +5659,18 @@ export interface components {
             source_application?: string;
             editable: boolean;
             actions?: components["schemas"]["SenderEnvelopeActions"];
+            /**
+             * Format: uuid
+             * @description SIGN-FREE-PARITY-1 S7 - the signed-in user's own folder holding this item, or null.
+             */
+            folder_id?: string | null;
             /** @enum {string} */
             routing_mode?: "PARALLEL" | "SEQUENTIAL";
             /** @description When signing in order and the envelope is open, the signer whose turn it is. */
             next_signer_id?: string | null;
             /** @description Feature-Parity §1.17 — a signer may hand their signature to another person (set in DRAFT, fixed at send). */
             allow_delegation?: boolean;
+            auto_reminders?: components["schemas"]["SenderEnvelopeAutoReminders"];
             mode?: components["schemas"]["SenderEnvelopeMode"];
             /** @description Aramo Sign Mobile M-A12 W1-A.4 — true when the caller may open a self-sign session on this envelope now (a signing recipient bound to them, still to sign, their turn, an Aramo Sign envelope they may act on, and sign:envelope:send). Drives "Sign now"; POST /v1/sign/sender/envelopes/{id}/self-sign-session re-checks everything, including the verified email. */
             can_self_sign_now?: boolean;
@@ -5542,12 +6023,17 @@ export interface components {
         };
         RecipientVerificationStatus: {
             required: boolean;
-            /** @enum {string|null} */
-            method: "SMS_OTP" | null;
+            /**
+             * @description The code still to enter (SIGN-FREE-PARITY-1 S3: a recipient asked for both enters the SMS code first, then the email code; the session is verified only when both are), or the first required one once all are verified.
+             * @enum {string|null}
+             */
+            method: "SMS_OTP" | "EMAIL_OTP" | null;
             verified: boolean;
             locked: boolean;
             /** @description The masked number. */
             phone: string | null;
+            /** @description SIGN-FREE-PARITY-1 S3 — the masked email an email code goes to (j***@example.com). */
+            email?: string | null;
         };
         SenderRecipientMessaging: {
             /** Format: uuid */
@@ -5795,6 +6281,15 @@ export interface components {
         };
     };
     responses: {
+        /** @description 502 — details.reason cloud_provider_unavailable. Try again. */
+        CloudProviderUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
         /** @description The envelope's documents were purged (ENVELOPE_PURGED). */
         EnvelopePurged: {
             headers: {
@@ -5932,10 +6427,13 @@ export interface components {
         };
     };
     parameters: {
+        CloudProvider: components["schemas"]["CloudStorageProvider"];
         /** @description The envelope id (UUID). */
         RegulatedEnvelopeId: string;
         /** @description The envelope document id (UUID). */
         DocumentId: string;
+        /** @description "deleted" lists the system Deleted folder; a folder id (uuid) lists one of the signed-in user's own folders (SIGN-FREE-PARITY-1 S7; never a deleted item; another user's folder is 404). Absent lists everything not deleted, including items in the user's folders. Any other value is 400 unknown folder. */
+        ListFolder: string;
         /** @description Status tab. */
         SenderTab: "all" | "drafts" | "waiting" | "completed" | "declined" | "voided" | "expired" | "follow_up";
         /** @description Free text matched against subject and recipient name or email. */
@@ -7287,6 +7785,8 @@ export interface operations {
                 days?: components["parameters"]["SenderDays"];
                 /** @description Maximum rows. */
                 limit?: components["parameters"]["SenderLimit"];
+                /** @description "deleted" lists the system Deleted folder; a folder id (uuid) lists one of the signed-in user's own folders (SIGN-FREE-PARITY-1 S7; never a deleted item; another user's folder is 404). Absent lists everything not deleted, including items in the user's folders. Any other value is 400 unknown folder. */
+                folder?: components["parameters"]["ListFolder"];
             };
             header?: never;
             path?: never;
@@ -7429,6 +7929,8 @@ export interface operations {
                     message?: string | null;
                     /** @description Feature-Parity §1.17 — allow a signer to hand their signature to another person (DRAFT only; fixed at send). true is refused 403 ESIGN_FEATURE_NOT_AVAILABLE while sign.delegate_signing is not available or for a PERSONAL account (details.reason plan_not_eligible). */
                     allow_delegation?: boolean;
+                    /** @description SIGN-FREE-PARITY-1 S4 — automatic reminders for this envelope (default true; all plans). After send, use PATCH /v1/sign/sender/envelopes/{id}/reminders. */
+                    auto_reminders_enabled?: boolean;
                 };
             };
         };
@@ -7787,6 +8289,8 @@ export interface operations {
                          * @enum {string|null}
                          */
                         identity_verification_method?: "ID_VERIFICATION" | "KBA" | null;
+                        /** @description SIGN-FREE-PARITY-1 S3 — ask for a one-time code sent to the recipient's email before signing (every plan). true sets it, false clears it, omitted keeps it. SIGNER and WITNESS only (400 email_otp_not_allowed). Refused 403 ESIGN_FEATURE_NOT_AVAILABLE while sign.email_otp is not available. */
+                        email_otp_required?: boolean;
                     }[];
                 };
             };
@@ -8002,6 +8506,46 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    setSenderEnvelopeAutoReminders: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The envelope's last-read ETag "{envelope_id}.{revision}". Required for native (mobile) tokens on draft writes, send and void (428 precondition_required); enforced whenever sent (412 revision_mismatch, details.current_revision). */
+                "If-Match"?: components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    auto_reminders_enabled: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["EnvelopeETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderEnvelopeDetail"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["RevisionMismatch"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
     voidSenderEnvelope: {
         parameters: {
             query?: never;
@@ -8068,6 +8612,235 @@ export interface operations {
             403: components["responses"]["SenderForbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listSenderCloudStorage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloudStorageConnections"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    connectSenderCloudStorage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: components["parameters"]["CloudProvider"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /**
+                     * @default web
+                     * @enum {string}
+                     */
+                    client?: "web" | "app";
+                    /** @description A page of the caller's workspace (/sign/… or /personal/…), no query. Web only. */
+                    return_path?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The provider's sign-in URL. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uri */
+                        authorize_url: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    senderCloudStorageCallback: {
+        parameters: {
+            query?: {
+                code?: string;
+                state?: string;
+                error?: string;
+            };
+            header?: never;
+            path: {
+                provider: components["parameters"]["CloudProvider"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Back to the Sign web app or the Aramo Sign app. */
+            302: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    disconnectSenderCloudStorage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: components["parameters"]["CloudProvider"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Disconnected. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listSenderCloudStorageItems: {
+        parameters: {
+            query?: {
+                folder_id?: string;
+                q?: string;
+                cursor?: string;
+                folders?: "1" | "true";
+                include_word?: "1" | "true";
+            };
+            header?: never;
+            path: {
+                provider: components["parameters"]["CloudProvider"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloudStorageItems"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            502: components["responses"]["CloudProviderUnavailable"];
+        };
+    };
+    importSenderCloudDocument: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The envelope's last-read ETag "{envelope_id}.{revision}". Required for native (mobile) tokens on draft writes, send and void (428 precondition_required); enforced whenever sent (412 revision_mismatch, details.current_revision). */
+                "If-Match"?: components["parameters"]["IfMatch"];
+                /** @description 1 to 255 printable characters, scoped to (tenant, authenticated user, operation, key) for 24 hours. A replay with the same body returns the first response; a different body is 422 idempotency_key_reuse; 409 idempotency_request_in_progress while the first request runs. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    provider: components["schemas"]["CloudStorageProvider"];
+                    file_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The attached document with its page geometry and the envelope's new revision. */
+            201: {
+                headers: {
+                    ETag: components["headers"]["EnvelopeETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderUploadedDocument"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["RevisionMismatch"];
+            413: components["responses"]["WordTooLarge"];
+            428: components["responses"]["PreconditionRequired"];
+            502: components["responses"]["CloudProviderUnavailable"];
+        };
+    };
+    exportSenderExecutedToCloud: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    provider: components["schemas"]["CloudStorageProvider"];
+                    folder_id?: string;
+                    /** @default false */
+                    include_certificate?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloudExportResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            410: components["responses"]["EnvelopePurged"];
+            502: components["responses"]["CloudProviderUnavailable"];
         };
     };
     getSenderEnvelopeEvidence: {
@@ -9632,9 +10405,118 @@ export interface operations {
             403: components["responses"]["SenderForbidden"];
         };
     };
-    listRecipientInbox: {
+    listSignFolders: {
         parameters: {
             query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignFolderList"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    createSignFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignFolderName"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignFolder"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    deleteSignFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        deleted: boolean;
+                    };
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    renameSignFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignFolderName"];
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignFolder"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listRecipientInbox: {
+        parameters: {
+            query?: {
+                /** @description "deleted" lists the system Deleted folder; a folder id (uuid) lists one of the signed-in user's own folders (SIGN-FREE-PARITY-1 S7; never a deleted item; another user's folder is 404). Absent lists everything not deleted, including items in the user's folders. Any other value is 400 unknown folder. */
+                folder?: components["parameters"]["ListFolder"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9650,6 +10532,7 @@ export interface operations {
                     "application/json": components["schemas"]["RecipientInbox"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["SenderUnauthorized"];
             403: components["responses"]["SenderForbidden"];
         };
@@ -10066,6 +10949,101 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SignAccountClosed"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getSenderPhoneStepUpStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderPhoneStepUpStatus"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    sendSenderPhoneStepUpCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description Another mobile number in E.164; omitted = the number from signup. */
+                    phone?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The code was texted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderPhoneStepUpSent"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description The SMS provider did not take the text (details.reason = step_up_sms_not_sent). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    verifySenderPhoneStepUpCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The phone is verified. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {boolean} */
+                        verified: true;
+                    };
                 };
             };
             400: components["responses"]["BadRequest"];
@@ -12072,6 +13050,69 @@ export interface operations {
             403: components["responses"]["SenderForbidden"];
         };
     };
+    moveSenderEnvelopeToFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Format: uuid
+                     * @description One of the signed-in user's own folders.
+                     */
+                    folder_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK. The folder now holding the item (null after removal). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignFolderPlacement"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    removeSenderEnvelopeFromFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignFolderPlacement"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     deleteSenderEnvelope: {
         parameters: {
             query?: never;
@@ -12251,6 +13292,67 @@ export interface operations {
             403: components["responses"]["SenderForbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    moveInboxItemToFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Format: uuid
+                     * @description One of the signed-in user's own folders.
+                     */
+                    folder_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK. The folder now holding the item (null after removal). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignFolderPlacement"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    removeInboxItemFromFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignFolderPlacement"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     removeFromMyInbox: {
@@ -12563,6 +13665,108 @@ export interface operations {
         };
         responses: {
             /** @description Verified for this session. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        verified: boolean;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description 403 INSUFFICIENT_PERMISSIONS — details.reason otp_code_locked or otp_locked. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: components["responses"]["Conflict"];
+        };
+    };
+    sendRecipientEmailOtp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SigningTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description The code was sent (or the email code is already verified for this session). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sent: boolean;
+                        verified: boolean;
+                        /** @description The masked email (j***@example.com). */
+                        email: string;
+                        /** Format: date-time */
+                        expires_at?: string | null;
+                        resend_after_seconds?: number;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description 403 INSUFFICIENT_PERMISSIONS — details.reason otp_locked. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 429 INVALID_REQUEST — details.reason otp_resend_cooldown (retry_after_seconds, retry_at) or otp_daily_limit. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 503 ESIGN_SEND_UNAVAILABLE — details.reason otp_delivery_failed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    verifyRecipientEmailOtp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                    code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The email code is verified for this session. */
             200: {
                 headers: {
                     [name: string]: unknown;

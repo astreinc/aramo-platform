@@ -17,13 +17,16 @@ import {
   SIGN_REPORTS_FEATURE,
   SIGN_SMS_DELIVERY_FEATURE,
   SIGN_SMS_OTP_FEATURE,
+  SIGN_EMAIL_OTP_FEATURE,
   SIGN_TEMPLATES_FEATURE,
   SIGN_WHATSAPP_DELIVERY_FEATURE,
   SIGN_WITNESS_SIGNING_FEATURE,
   SignFeatureGate,
 } from '../sign-feature.gate.js';
+import { offeredCloudProviders } from '../cloud-storage/cloud-storage.config.js';
 import { SignPaymentsGate } from '../payments/sign-payments.gate.js';
 import { WORD_CONVERSION_PORT, type WordConversionPort } from '../word-conversion/word-conversion.port.js';
+import { SignWhatsappPlanGate } from '../messaging/whatsapp-plan.gate.js';
 
 import { ESIGN_CREATE_SCOPE, ESIGN_READ_SCOPE, ESIGN_SEND_SCOPE, authorRefusal, personalSendingNotEnabled as personalSendingRefusal, refusalError } from './envelope-actions.js';
 import { templateAuthority, templateGrantsOf, templatePlanOf, type TemplatePlan } from './template-authority.js';
@@ -96,6 +99,7 @@ export interface SenderContextView {
     sms_delivery: boolean;
     whatsapp_delivery: boolean;
     sms_otp: boolean;
+    email_otp: boolean;
     id_verification: boolean;
     kba: boolean;
     custom_roles: boolean;
@@ -138,6 +142,10 @@ export interface SenderContextView {
   // M-A13 R-4 — the sender upload accepts .docx / .doc (converted to PDF on the server). False
   // unless SIGN_WORD_CONVERSION_ENABLED=1 and a converter is configured.
   word_conversion_enabled: boolean;
+  // SIGN-FREE-PARITY-1 S6 (FP-R7) — the cloud storage providers offered for import and export
+  // (every plan): launch key AVAILABLE, the provider's OAuth app configured and the token key
+  // set. Empty while dark: the web and the app show no cloud storage button.
+  cloud_storage: Array<'google_drive' | 'onedrive' | 'dropbox' | 'box'>;
 }
 
 // A Personal account's workspace label, shown wherever the Sign apps name the
@@ -170,6 +178,8 @@ export class SenderContextService {
     @Optional() private readonly roles?: RoleService,
     // M-A13 R-4 — Word upload capability (absent ⇒ false).
     @Optional() @Inject(WORD_CONVERSION_PORT) private readonly wordConversion?: WordConversionPort,
+    // SIGN-FREE-PARITY-1 S5 — the per-plan WhatsApp entitlement (absent ⇒ launch availability only).
+    @Optional() private readonly whatsappPlan?: SignWhatsappPlanGate,
   ) {}
 
   // TEMPLATE-PRODUCT-1 §8.1 / §8.5 — read only while sign.templates is available (every template
@@ -306,8 +316,12 @@ export class SenderContextService {
         access_code: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_ACCESS_CODE_FEATURE),
         // B2 — no plan rule exists for messaging in code (OD-3 / D-D open): availability only.
         sms_delivery: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_SMS_DELIVERY_FEATURE),
-        whatsapp_delivery: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_WHATSAPP_DELIVERY_FEATURE),
+        // SIGN-FREE-PARITY-1 S5 — launched AND in the account's plan (FP-R3: off on Free, on for Business).
+        whatsapp_delivery:
+          (this.features ?? new SignFeatureGate()).isAvailable(SIGN_WHATSAPP_DELIVERY_FEATURE) && (this.whatsappPlan === undefined ? true : await this.whatsappPlan.entitled(tenant.id)),
         sms_otp: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_SMS_OTP_FEATURE),
+        // SIGN-FREE-PARITY-1 S3 (FP-R4) — every plan: launch availability only.
+        email_otp: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_EMAIL_OTP_FEATURE),
         // B2 — identity checks are refused for a Personal account (plan_not_eligible).
         id_verification: business && (this.features ?? new SignFeatureGate()).isAvailable(SIGN_ID_VERIFICATION_FEATURE),
         kba: business && (this.features ?? new SignFeatureGate()).isAvailable(SIGN_KBA_FEATURE),
@@ -326,6 +340,7 @@ export class SenderContextService {
       personal_account_owner,
       ...templates,
       word_conversion_enabled: this.wordConversion?.enabled === true,
+      cloud_storage: offeredCloudProviders((k) => (this.features ?? new SignFeatureGate()).isAvailable(k)),
     };
   }
 }

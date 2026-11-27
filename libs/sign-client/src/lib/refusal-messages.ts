@@ -5,10 +5,13 @@
 // mobile wording was kept, with any screen it named made neutral ("your plan settings").
 import { pdfProblemText } from '@aramo/sign-fields';
 
+import { CLOUD_FEATURE_COPY, CLOUD_STORAGE_REFUSAL_COPY } from './cloud-storage.js';
 import { WORD_COPY } from './file-rules.js';
+import { FOLDER_COPY } from './folders.js';
 import { isDailyAllowance, limitReachedCopy } from './plan.js';
 import { ACCESS_CODE_MAX_LENGTH, ACCESS_CODE_MIN_LENGTH, PHONE_HINT, SIGNERS_FULL_MESSAGE } from './validation.js';
 import { MAX_COPY_RECIPIENTS } from './recipients.js';
+import { PHONE_STEP_UP_REFUSAL_COPY } from './phone-step-up.js';
 import { SIGNER_FIELD_VALUE_COPY } from './signer-field-input.js';
 
 export const FALLBACK_MESSAGE = 'Something went wrong. Try again.';
@@ -52,8 +55,18 @@ export const RECIPIENT_COPY = {
 export const REFUSAL_COPY: Readonly<Record<string, string>> = {
   ...WORD_COPY,
   ...RECIPIENT_COPY,
+  // SIGN-FREE-PARITY-1 S6 — cloud storage import and export.
+  ...CLOUD_STORAGE_REFUSAL_COPY,
   // FIELD-PARITY-1 P3 §6 — a field value the server refused (fill: VALIDATION_ERROR details.reason).
   ...SIGNER_FIELD_VALUE_COPY,
+  // SIGN-FREE-PARITY-1 S7 — a folder name or the folder cap the server refused.
+  folder_name_empty: FOLDER_COPY.folder_name_empty,
+  folder_name_too_long: FOLDER_COPY.folder_name_too_long,
+  folder_name_taken: FOLDER_COPY.folder_name_taken,
+  folder_limit_reached: FOLDER_COPY.folder_limit_reached,
+  folder_not_found: FOLDER_COPY.folder_not_found,
+  // SIGN-FREE-PARITY-1 S2 — the sender's own phone step-up (v1/sign/personal/step-up).
+  ...PHONE_STEP_UP_REFUSAL_COPY,
   // Sign-in (native auth, M-A1; Apple Go-Live A1).
   idp_not_permitted_for_tenant: 'Your account doesn’t use this sign-in option. Sign in the way you usually do.',
   invalid_grant: 'Sign-in didn’t finish. Try again.',
@@ -152,6 +165,7 @@ export const REFUSAL_COPY: Readonly<Record<string, string>> = {
 /** Copy keyed by details.feature_key for a feature refusal (ESIGN_FEATURE_NOT_AVAILABLE). */
 const FEATURE_COPY: Readonly<Record<string, string>> = {
   'sign.reports': 'Reports aren’t available on your Aramo Sign plan yet.',
+  ...CLOUD_FEATURE_COPY,
 };
 
 export interface RefusalInput {

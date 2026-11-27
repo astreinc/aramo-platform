@@ -66,6 +66,11 @@ describe('CCP-B2 catalog model', () => {
       // Billing terms — no explicit terms: one term derived from the plan (a 12-month commitment → ANNUAL_COMMIT).
       billing_terms: [{ term: 'ANNUAL_COMMIT', list_price_minor: 2000, commitment_months: 12 }],
       explicit_terms: false,
+      // SIGN-FREE-PARITY-1 S1 / S5 — no DAY cap; the allowance keys; the description; the entitlements.
+      envelopes_per_day: null,
+      allowance_keys: ['sign.envelopes', 'sign.forms'],
+      description: 'd',
+      features: [{ feature_key: 'sign.team_collaboration', enabled: true }],
     });
     expect(catalogTermsOf(ENTERPRISE)).toMatchObject({ contract_priced: true, envelopes_present: false, storage_present: false, list_price_minor: null });
     expect(isContractPriced(ENTERPRISE)).toBe(true);
@@ -179,5 +184,65 @@ describe('A3 D1 / A4 D2 add-on unit prices in the plan-version content', () => {
     expect(edit({ 'sign.sms_message': 10_000_001 })).toThrow(CatalogDraftEditError);
     // Removing a price that is not there is a no-op, not an error.
     expect(applyCatalogDraftEdits(BUSINESS, { unit_prices: { 'sign.kba': null } })).toEqual(BUSINESS);
+  });
+});
+
+// SIGN-FREE-PARITY-1 S1 / S5 (LOCKED 2026-11-27) — Free plan version 3: the DAY cap removed, the forms
+// allowance dropped, the description edited; a feature entitlement set per version.
+const FREE: PlanVersionContent = {
+  ...BUSINESS,
+  plan: { ...BUSINESS.plan, key: 'aramo-sign-free-personal-v1', name: 'Free', description: 'For individuals: 5 E-Signs a month (up to 2 a day) and 15 MB storage.', tenant_kind: 'PERSONAL', sales_model: 'FREE', list_price_minor: 0, reference_price_minor: null, commitment_months: null, support_tier: null },
+  allowances: [
+    { allowance_key: 'sign.envelopes', included_quantity: 5, unlimited: false, period: 'MONTHLY' },
+    { allowance_key: 'sign.forms', included_quantity: 5, unlimited: false, period: 'MONTHLY' },
+  ],
+  allowance_windows: [{ allowance_key: 'sign.envelopes', window_kind: 'DAY', limit_quantity: 2 }],
+  capacities: [
+    { capacity_key: 'sign.templates', limit_quantity: 0, unlimited: false },
+    { capacity_key: 'sign.storage_bytes', limit_quantity: 15728640, unlimited: false },
+  ],
+  features: [{ feature_key: 'sign.reports', enabled: false }],
+};
+
+describe('SIGN-FREE-PARITY-1 S1 / S5 draft edits', () => {
+  it('FP-S1-1 reads the DAY cap, the allowance keys and the description', () => {
+    expect(catalogTermsOf(FREE)).toMatchObject({ envelopes_per_day: 2, allowance_keys: ['sign.envelopes', 'sign.forms'], description: FREE.plan.description });
+  });
+
+  it('FP-S1-2 builds version 3: no DAY cap, no forms allowance, the new description; everything else kept', () => {
+    const v3 = applyCatalogDraftEdits(FREE, { envelopes_per_day: null, remove_allowances: ['sign.forms'], description: 'For individuals: 5 E-Signs a month and 15 MB storage.' });
+    expect(v3.allowance_windows).toEqual([]);
+    expect(v3.allowances).toEqual([{ allowance_key: 'sign.envelopes', included_quantity: 5, unlimited: false, period: 'MONTHLY' }]);
+    expect(v3.plan.description).toBe('For individuals: 5 E-Signs a month and 15 MB storage.');
+    expect(v3.capacities).toEqual(FREE.capacities);
+    expect(v3.features).toEqual(FREE.features);
+    expect(catalogTermsOf(v3)).toMatchObject({ envelopes_per_day: null, envelopes_per_month: 5, allowance_keys: ['sign.envelopes'] });
+  });
+
+  it('FP-S1-3 edits an existing DAY cap; never adds one', () => {
+    expect(applyCatalogDraftEdits(FREE, { envelopes_per_day: 3 }).allowance_windows).toEqual([{ allowance_key: 'sign.envelopes', window_kind: 'DAY', limit_quantity: 3 }]);
+    expect(() => applyCatalogDraftEdits(BUSINESS, { envelopes_per_day: 3 })).toThrow(CatalogDraftEditError);
+    expect(() => applyCatalogDraftEdits(FREE, { envelopes_per_day: 0 })).toThrow(/positive integer/);
+  });
+
+  it('FP-S1-4 refuses to remove the envelopes allowance or an allowance the version does not carry', () => {
+    expect(() => applyCatalogDraftEdits(FREE, { remove_allowances: ['sign.envelopes'] })).toThrow(/cannot be removed/);
+    expect(() => applyCatalogDraftEdits(FREE, { remove_allowances: ['sign.unknown'] })).toThrow(/carries no sign.unknown/);
+  });
+
+  it('FP-S1-5 refuses an empty or over-long description; null clears it', () => {
+    expect(() => applyCatalogDraftEdits(FREE, { description: '  ' })).toThrow(/description/);
+    expect(() => applyCatalogDraftEdits(FREE, { description: 'x'.repeat(301) })).toThrow(/description/);
+    expect(applyCatalogDraftEdits(FREE, { description: null }).plan.description).toBeNull();
+  });
+
+  it('FP-S5-1 sets a registered feature entitlement (also one not yet launched); refuses an unregistered key', () => {
+    const next = applyCatalogDraftEdits(FREE, { features: { 'sign.whatsapp_delivery': false, 'sign.reports': true } });
+    expect(catalogTermsOf(next).features).toEqual([
+      { feature_key: 'sign.reports', enabled: true },
+      { feature_key: 'sign.whatsapp_delivery', enabled: false },
+    ]);
+    expect(() => applyCatalogDraftEdits(FREE, { features: { 'sign.not_a_feature': true } })).toThrow(/not a registered sign feature/);
+    expect(() => applyCatalogDraftEdits(FREE, { features: { 'ats.reports': true } })).toThrow(/not a registered sign feature/);
   });
 });

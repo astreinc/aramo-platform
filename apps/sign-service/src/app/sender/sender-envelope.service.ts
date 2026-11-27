@@ -53,6 +53,7 @@ import {
   inboxHandleKey,
   mintInboxHandle,
   SignUserProfileRepository,
+  type SendRiskVerdict,
 } from '@aramo/sign';
 import {
   selfSignTarget,
@@ -63,6 +64,8 @@ import {
   MAX_SIGNERS,
   SENDER_FIELD_TYPES,
   VOID_REASON_MAX,
+  AUTO_REMINDER_CADENCE,
+  canSetAutoReminders,
 } from '@aramo/sign-client';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
 import { checkboxGroupIssues, fieldConditionIssues, fieldTypesFor, fieldValueRefusal, isFieldKey, parseFieldSettings, senderFilledFieldsEnabled, FIELD_KEY_MAX, type FieldCondition, type FieldImportWarning } from '@aramo/sign-fields';
@@ -71,6 +74,7 @@ import { PDFDocument } from 'pdf-lib';
 import { AramoSignStorageGate } from '../billing/aramo-sign-storage.gate.js';
 import {
   SIGN_ACCESS_CODE_FEATURE,
+  SIGN_EMAIL_OTP_FEATURE,
   SIGN_DELEGATE_SIGNING_FEATURE,
   SIGN_ID_VERIFICATION_FEATURE,
   SIGN_IN_PERSON_SIGNING_FEATURE,
@@ -82,6 +86,7 @@ import { NativeAramoSignatureProvider } from '../native-aramo-signature.provider
 import { PersonalSendGate } from '../personal/personal-send.gate.js';
 import { purgeViewOf } from '../retention/purge-view.js';
 import { SignPurgeService } from '../retention/sign-purge.service.js';
+import { folderIdOf, folderNotFound, parseFolderParam, SignFoldersService } from '../folders/sign-folders.service.js';
 import { SignPaymentsGate, paymentsNotAvailable } from '../payments/sign-payments.gate.js';
 import { WORD_CONVERSION_PORT, WordConversionError, disabledWordConversion, isWordFilename, type WordConversionPort } from '../word-conversion/word-conversion.port.js';
 
@@ -260,11 +265,28 @@ export class SenderEnvelopeService {
     @Optional() @Inject(WORD_CONVERSION_PORT) private readonly wordConversion?: WordConversionPort,
     // Client Rule Consolidation C1 — SIGN_PURGE_ENABLED, for the delete / restore / purge actions.
     @Optional() private readonly purgeEngine?: SignPurgeService,
+    // SIGN-FREE-PARITY-1 S7 — the caller's own folders (absent ⇒ no folders: every row's folder_id is null).
+    @Optional() private readonly folders?: SignFoldersService,
   ) {}
 
   /** Feature-Parity (Amendment A1) — the ownership check, for the QES / e-stamp sender routes. */
   async assertMayChangeEnvelope(auth: AuthContextType, envelope_id: string, requestId: string): Promise<void> {
     await this.assertMayChange(auth, envelope_id, requestId);
+  }
+
+  // SIGN-FREE-PARITY-1 S7 — move an envelope the caller can see into one of their own folders
+  // (out of any other of theirs), or take it out. The envelope itself never changes.
+  async moveToFolder(auth: AuthContextType, envelope_id: string, body: { folder_id?: unknown } | undefined, requestId: string) {
+    const folder_id = folderIdOf(body, requestId);
+    await this.assertVisible(auth, envelope_id, requestId);
+    if (this.folders === undefined) throw folderNotFound(requestId);
+    return this.folders.place(auth, folder_id, 'SENDER', envelope_id, requestId);
+  }
+
+  async removeFromFolder(auth: AuthContextType, envelope_id: string, requestId: string) {
+    await this.assertVisible(auth, envelope_id, requestId);
+    if (this.folders === undefined) return { folder_id: null };
+    return this.folders.unplace(auth, 'SENDER', envelope_id);
   }
 
   /** Throws ENVELOPE_NOT_FOUND unless the caller can see the envelope (owner or read-all). */
@@ -397,9 +419,15 @@ export class SenderEnvelopeService {
 
   async list(auth: AuthContextType, query: { tab?: string; q?: string; days?: string; limit?: string; folder?: string }, requestId: string) {
     const createdBy = await this.ownerFilter(auth, requestId);
-    if (query.folder !== undefined && query.folder !== 'deleted') throw bad(requestId, 'unknown folder', { folder: query.folder });
+    // SIGN-FREE-PARITY-1 S7 — `folder` is the Deleted folder or one of the caller's own folders.
+    const folder = parseFolderParam(query.folder, requestId);
+    if (folder.kind === 'user' && this.folders === undefined) throw folderNotFound(requestId);
     // Retention and Purge W5 — envelopes this tenant deleted live only in the Deleted folder.
     const deleted = this.purges !== undefined ? await this.purges.deletedEnvelopeIds({ kind: 'SENDER', key: auth.tenant_id }) : [];
+    const deletedIds = new Set(deleted);
+    // S7 — a user folder lists what the caller put in it, never a deleted envelope.
+    const folderIds = folder.kind === 'user' && this.folders !== undefined ? (await this.folders.itemRefs(auth, folder.id, 'SENDER', requestId)).filter((id) => !deletedIds.has(id)) : null;
+    const placed = this.folders !== undefined ? await this.folders.placements(auth, 'SENDER') : new Map<string, string>();
     const statuses = ENVELOPE_TABS[query.tab ?? 'all'];
     if (query.tab !== undefined && !(query.tab in ENVELOPE_TABS)) throw bad(requestId, 'unknown tab', { tab: query.tab });
     const days = query.days !== undefined ? Number(query.days) : undefined;
@@ -411,7 +439,7 @@ export class SenderEnvelopeService {
       ...(query.q !== undefined ? { q: query.q } : {}),
       ...(days !== undefined ? { created_since: new Date(Date.now() - days * 86_400_000) } : {}),
       created_by: createdBy,
-      ...(query.folder === 'deleted' ? { only_ids: deleted } : { exclude_ids: deleted }),
+      ...(folder.kind === 'deleted' ? { only_ids: deleted } : folderIds !== null ? { only_ids: folderIds } : { exclude_ids: deleted }),
       limit,
     });
     const last = await this.repo.lastEventAt(auth.tenant_id, rows.map((r) => r.id));
@@ -424,7 +452,7 @@ export class SenderEnvelopeService {
     // Client Rule Consolidation C1 — one facts read per page; Deleted-folder membership from
     // the id list already loaded above (no per-row query).
     const facts = await this.actionFacts(auth, requestId);
-    const deletedSet = new Set(deleted);
+    const deletedSet = deletedIds;
     return {
       items: rows.map((e) => ({
         id: e.id,
@@ -447,6 +475,8 @@ export class SenderEnvelopeService {
         mode: envelopeModeOf(e),
         can_self_sign_now: canSelfSignNow(auth, e),
         purge: purgeViewOf(e),
+        // SIGN-FREE-PARITY-1 S7 — the caller's own folder holding this envelope, or null.
+        folder_id: placed.get(e.id) ?? null,
         // C1 — what the caller may do with this envelope (envelope-actions.ts).
         actions: senderActions(auth, actionEnvelopeOf(e), {
           ...facts,
@@ -476,7 +506,9 @@ export class SenderEnvelopeService {
       const row = actionEnv.recipients.find((x) => x.id === r.id);
       return { ...r, hostable: actions.host_in_person && row !== undefined && hostableRecipient(actionEnv, row, now) };
     });
-    return { ...view, recipients, actions };
+    // SIGN-FREE-PARITY-1 S7 — the caller's own folder holding this envelope, or null.
+    const folder_id = this.folders !== undefined ? ((await this.folders.placements(auth, 'SENDER')).get(env.id) ?? null) : null;
+    return { ...view, recipients, actions, folder_id };
   }
 
   // C1 — the detail's `actions`: the request facts, this tenant's Deleted-folder membership
@@ -565,6 +597,14 @@ export class SenderEnvelopeService {
       next_signer_id: nextSignerId,
       // Feature-Parity §1.17 — whether a signer may delegate (set in DRAFT, fixed at send).
       allow_delegation: env.allow_delegation,
+      // SIGN-FREE-PARITY-1 S4 — automatic reminders: the sender's switch, how many went, and
+      // when the next one goes (only while signing is open and one is planned).
+      auto_reminders: {
+        enabled: env.auto_reminders_enabled,
+        sent_count: env.auto_reminder_count,
+        max_count: AUTO_REMINDER_CADENCE.max_count,
+        next_at: open && env.auto_reminders_enabled ? iso(env.next_auto_reminder_at) : null,
+      },
       // Aramo Sign Mobile M-A12 W1-A — standard | self, and whether the caller may "Sign now"
       // (open a self-sign session) on this envelope.
       mode: envelopeModeOf(env),
@@ -620,6 +660,8 @@ export class SenderEnvelopeService {
         // whether verification locked them out (failed name match or every attempt used).
         identity_verification_method: s.identity_verification_method ?? null,
         identity_verification_locked: s.identity_verification_locked_at !== null,
+        // SIGN-FREE-PARITY-1 S3 — a code sent to the recipient's email is asked before signing.
+        email_otp_required: s.email_otp_required === true,
       })),
       fields: env.documents.flatMap((d) =>
         d.fields.map((f) => ({
@@ -959,7 +1001,13 @@ export class SenderEnvelopeService {
     return { name, email };
   }
 
-  async update(auth: AuthContextType, envelope_id: string, body: { subject?: unknown; routing_mode?: unknown; message?: unknown; allow_delegation?: unknown }, requestId: string, ifMatch?: string) {
+  async update(
+    auth: AuthContextType,
+    envelope_id: string,
+    body: { subject?: unknown; routing_mode?: unknown; message?: unknown; allow_delegation?: unknown; auto_reminders_enabled?: unknown },
+    requestId: string,
+    ifMatch?: string,
+  ) {
     await this.context.assertCanAuthor(auth, requestId);
     const expected = expectedRevision(auth, ifMatch, envelope_id, requestId);
     await this.assertMayChange(auth, envelope_id, requestId);
@@ -969,7 +1017,14 @@ export class SenderEnvelopeService {
     const hasMessage = body?.message !== undefined;
     // Feature-Parity §1.17 — the sender allows delegation (Business and up; dark until flipped).
     const hasDelegation = body?.allow_delegation !== undefined;
-    if (!hasSubject && !hasRouting && !hasMessage && !hasDelegation) throw bad(requestId, 'subject, routing_mode, message or allow_delegation is required');
+    // SIGN-FREE-PARITY-1 S4 — automatic reminders while drafting (default on; all plans).
+    const hasAutoReminders = body?.auto_reminders_enabled !== undefined;
+    if (!hasSubject && !hasRouting && !hasMessage && !hasDelegation && !hasAutoReminders) {
+      throw bad(requestId, 'subject, routing_mode, message, allow_delegation or auto_reminders_enabled is required');
+    }
+    if (hasAutoReminders && typeof body.auto_reminders_enabled !== 'boolean') {
+      throw bad(requestId, 'auto_reminders_enabled must be true or false', { field: 'auto_reminders_enabled' });
+    }
     if (hasDelegation) {
       if (typeof body.allow_delegation !== 'boolean') throw bad(requestId, 'allow_delegation must be true or false', { field: 'allow_delegation' });
       if (body.allow_delegation) await this.assertBusinessFeature(auth, SIGN_DELEGATE_SIGNING_FEATURE, requestId);
@@ -990,8 +1045,30 @@ export class SenderEnvelopeService {
       ...(hasRouting ? { routing_mode: body.routing_mode as string } : {}),
       ...(message !== undefined ? { message } : {}),
       ...(hasDelegation ? { allow_delegation: body.allow_delegation as boolean } : {}),
+      ...(hasAutoReminders ? { auto_reminders_enabled: body.auto_reminders_enabled as boolean } : {}),
       ...(expected !== undefined ? { expected_revision: expected } : {}),
     });
+    return this.detail(auth, envelope_id, requestId);
+  }
+
+  // SIGN-FREE-PARITY-1 S4 (FP-R5) — turn automatic reminders on or off while drafting or after
+  // sending (PATCH envelopes/:id/reminders). The same authority and If-Match rule as void; a
+  // closed envelope (completed, declined, voided, expired) or a self-signed one is refused.
+  async setAutoReminders(auth: AuthContextType, envelope_id: string, body: { auto_reminders_enabled?: unknown }, requestId: string, ifMatch?: string) {
+    await this.context.assertCanAuthor(auth, requestId);
+    const expected = expectedRevision(auth, ifMatch, envelope_id, requestId);
+    await this.assertMayChange(auth, envelope_id, requestId);
+    const enabled = body?.auto_reminders_enabled;
+    if (typeof enabled !== 'boolean') throw bad(requestId, 'auto_reminders_enabled must be true or false', { field: 'auto_reminders_enabled' });
+    const env = await this.repo.getEnvelopeDetail(auth.tenant_id, envelope_id);
+    enforce(remindModeRefusal(env), requestId);
+    if (!canSetAutoReminders({ status: env.status })) {
+      throw new AramoError('ESIGN_REMINDER_NOT_ALLOWED', 'Automatic reminders can be changed only before the envelope is finished', 409, {
+        requestId,
+        details: { reason: 'envelope_closed', status: env.status },
+      });
+    }
+    await this.provider.setAutoReminders(auth.tenant_id, envelope_id, enabled, expected !== undefined ? { expected_revision: expected } : {});
     return this.detail(auth, envelope_id, requestId);
   }
 
@@ -1240,6 +1317,7 @@ export class SenderEnvelopeService {
       witness_for_index: number | null;
       access_code_hash?: string | null;
       identity_verification_method?: IdentityVerificationMethod | null;
+      email_otp_required?: boolean;
     }> = [];
     const list = body.recipients as unknown[];
     for (const [i, r] of list.entries()) {
@@ -1256,6 +1334,8 @@ export class SenderEnvelopeService {
       if (kind === 'WITNESS') await this.assertBusinessFeature(auth, SIGN_WITNESS_SIGNING_FEATURE, requestId);
       // §1.9 — the access code: a string sets it, null clears it, omitted keeps it.
       const accessCodeHash = this.accessCodeHashOf(o, kind, i, requestId);
+      // SIGN-FREE-PARITY-1 S3 — the email code: a boolean sets it, omitted keeps it.
+      const emailOtp = this.emailOtpOf(o, kind, i, requestId);
       // M-A5 §2.1 — copy_delivery is required iff RECEIVES_COPY.
       const cdRaw = o['copy_delivery'] ?? null;
       if (kind === 'RECEIVES_COPY' && (typeof cdRaw !== 'string' || !(COPY_DELIVERIES as readonly string[]).includes(cdRaw))) {
@@ -1304,6 +1384,7 @@ export class SenderEnvelopeService {
         witness_for_index: witnessFor,
         ...(accessCodeHash !== undefined ? { access_code_hash: accessCodeHash } : {}),
         ...(idv !== undefined ? { identity_verification_method: idv } : {}),
+        ...(emailOtp !== undefined ? { email_otp_required: emailOtp } : {}),
       });
     }
     // §1.17 — one witness per signer.
@@ -1339,6 +1420,22 @@ export class SenderEnvelopeService {
       throw bad(requestId, `recipient ${i + 1}: a witness attests for a signer`, { index: i, field: 'witness_for_index', reason: 'witness_for_invalid' });
     }
     return raw;
+  }
+
+  // SIGN-FREE-PARITY-1 S3 (FP-R4) — ask for a one-time code sent to the recipient's email before
+  // signing. Every plan (launch availability only). SIGNER and WITNESS only: they sign through a
+  // link and always have an email (the DB CHECK Signer_email_otp_check holds the same rule).
+  // undefined = omitted (keep); false clears it.
+  private emailOtpOf(o: Record<string, unknown>, kind: RecipientKind, i: number, requestId: string): boolean | undefined {
+    const raw = o['email_otp_required'];
+    if (raw === undefined || raw === null) return undefined;
+    if (typeof raw !== 'boolean') throw bad(requestId, `recipient ${i + 1}: email_otp_required must be true or false`, { index: i, field: 'email_otp_required' });
+    if (!raw) return false;
+    (this.features ?? new SignFeatureGate()).assertAvailable(SIGN_EMAIL_OTP_FEATURE, requestId);
+    if (kind !== 'SIGNER' && kind !== 'WITNESS') {
+      throw bad(requestId, `recipient ${i + 1}: an email code applies to a recipient who signs through a link`, { index: i, field: 'email_otp_required', reason: 'email_otp_not_allowed' });
+    }
+    return true;
   }
 
   // Feature-Parity §1.9 — the access code of one recipient, hashed (never stored or
@@ -1615,7 +1712,11 @@ export class SenderEnvelopeService {
       ...(expected !== undefined ? { expected_revision: expected } : {}),
     });
     if (expected !== undefined) expected = rev;
-    await this.provider.sendEnvelope(auth.tenant_id, envelope_id, auth.sub, undefined, expected !== undefined ? { expected_revision: expected } : {});
+    // SIGN-FREE-PARITY-1 S4 (FP-R5) — the send-time check verdict, recorded on the envelope for
+    // its automatic reminders (a system reminder has no IP and is never re-checked). A Personal
+    // send reached here only because the check above passed; Business sends are not checked.
+    const send_verdict: SendRiskVerdict = tenant.kind === 'PERSONAL' ? 'ALLOWED' : 'NOT_GATED';
+    await this.provider.sendEnvelope(auth.tenant_id, envelope_id, auth.sub, undefined, { auto_reminders: { send_verdict }, ...(expected !== undefined ? { expected_revision: expected } : {}) });
     // M-A3 §5 — the sender's saved contacts for these recipients were just used.
     await this.contactStore?.touchUsed(auth.tenant_id, auth.sub, d.recipients.flatMap((r) => (r.email === null ? [] : [r.email]))).catch(() => undefined);
     return this.detail(auth, envelope_id, requestId);

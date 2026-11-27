@@ -293,7 +293,7 @@ describe('SigningFlow', () => {
       flow(
         { status: 403, body: { error: { code: 'INSUFFICIENT_PERMISSIONS', details: { reason: 'recipient_verification_required' } } } },
         {
-          '/verification': () => ({ status: 200, body: { required: true, verified: false, locked: false, phone: '+1•••••••23' } }),
+          '/verification': () => ({ status: 200, body: { required: true, verified: verifies >= 2, locked: false, phone: '+1•••••••23' } }),
           '/sms-otp/send': () => ({ status: 200, body: { sent: true, verified: false, phone: '+1•••••••23' } }),
           '/sms-otp/verify': () =>
             ++verifies === 1
@@ -311,6 +311,42 @@ describe('SigningFlow', () => {
       fireEvent.changeText(screen.getByLabelText('Code'), '123456');
       fireEvent.press(screen.getByText('Continue'));
       await waitFor(() => expect(screen.getByTestId('consent-check')).toBeTruthy(), { timeout: 15_000 });
+    });
+
+    // SIGN-FREE-PARITY-1 S3 — the email code: the screen says the code goes to their email; a
+    // signer asked for both codes enters the SMS code, then the email code.
+    it('email: SMS code first, then the code sent to their email, then the document', async () => {
+      let sms = false;
+      let email = false;
+      const sentTo: string[] = [];
+      flow(
+        { status: 403, body: { error: { code: 'INSUFFICIENT_PERMISSIONS', details: { reason: 'recipient_verification_required', method: 'SMS_OTP' } } } },
+        {
+          '/verification': () => ({
+            status: 200,
+            body: { required: true, verified: sms && email, locked: false, method: sms ? 'EMAIL_OTP' : 'SMS_OTP', phone: '+1•••••••23', email: 'j***@example.com' },
+          }),
+          '/sms-otp/send': () => (sentTo.push('sms'), { status: 200, body: { sent: true, verified: false, phone: '+1•••••••23' } }),
+          '/sms-otp/verify': () => ((sms = true), { status: 200, body: { verified: true } }),
+          '/email-otp/send': () => (sentTo.push('email'), { status: 200, body: { sent: true, verified: false, email: 'j***@example.com' } }),
+          '/email-otp/verify': () => ((email = true), { status: 200, body: { verified: true } }),
+        },
+      );
+      await waitFor(() => expect(screen.getByTestId('signing-smscode')).toBeTruthy(), { timeout: 15_000 });
+      await waitFor(() => expect(screen.getByText(/\+1•••••••23/)).toBeTruthy());
+      fireEvent.press(screen.getByText('Text me a code'));
+      await waitFor(() => expect(screen.getByLabelText('Code')).toBeTruthy());
+      fireEvent.changeText(screen.getByLabelText('Code'), '111111');
+      fireEvent.press(screen.getByText('Continue'));
+      await waitFor(() => expect(screen.getByTestId('signing-emailcode')).toBeTruthy(), { timeout: 15_000 });
+      expect(screen.getByText('Enter the code we email you')).toBeTruthy();
+      expect(screen.getByText(/We’ll email a 6-digit code to j\*\*\*@example\.com/)).toBeTruthy();
+      fireEvent.press(screen.getByText('Email me a code'));
+      await waitFor(() => expect(screen.getByText(/We sent a 6-digit code to j\*\*\*@example\.com/)).toBeTruthy());
+      fireEvent.changeText(screen.getByLabelText('Code'), '222222');
+      fireEvent.press(screen.getByText('Continue'));
+      await waitFor(() => expect(screen.getByTestId('consent-check')).toBeTruthy(), { timeout: 15_000 });
+      expect(sentTo).toEqual(['sms', 'email']);
     });
 
     it('SMS: a locked recipient sees the lock message', async () => {

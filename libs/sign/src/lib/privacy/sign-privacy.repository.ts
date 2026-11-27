@@ -35,6 +35,10 @@ export interface SignPrivacyInventory {
   sign_settings: number;
   app_issue_reports: number;
   template_favorites: number;
+  // SIGN-FREE-PARITY-1 S7 — the user's own folders.
+  folders: number;
+  // SIGN-FREE-PARITY-1 S6 — connected cloud storage accounts (deletion scope).
+  cloud_connections: number;
   draft_envelopes: number;
   sent_envelopes: number;
   completed_envelopes: number;
@@ -70,7 +74,7 @@ export class SignPrivacyRepository {
         ])
       : [null, null];
     const owned = s === null
-      ? { saved_signatures: zero, contacts: zero, push_devices: zero, notifications: zero, notification_preferences: zero, sign_profiles: zero, sign_settings: zero, app_issue_reports: zero, template_favorites: zero, draft_envelopes: zero, sent_envelopes: zero, completed_envelopes: zero }
+      ? { saved_signatures: zero, contacts: zero, push_devices: zero, notifications: zero, notification_preferences: zero, sign_profiles: zero, sign_settings: zero, app_issue_reports: zero, template_favorites: zero, folders: zero, cloud_connections: zero, draft_envelopes: zero, sent_envelopes: zero, completed_envelopes: zero }
       : {
           saved_signatures: await this.prisma.signSavedSignature.count({ where: { tenant_id: s.tenant_id, user_id: s.user_id } }),
           contacts: await this.prisma.signContact.count({ where: { tenant_id: s.tenant_id, owner_user_id: s.user_id } }),
@@ -81,6 +85,8 @@ export class SignPrivacyRepository {
           sign_settings: await this.prisma.signUserSettings.count({ where: { tenant_id: s.tenant_id, user_id: s.user_id } }),
           app_issue_reports: await this.prisma.signAppIssueReport.count({ where: { tenant_id: s.tenant_id, user_id: s.user_id } }),
           template_favorites: await this.prisma.signUserFavorite.count({ where: { tenant_id: s.tenant_id, user_id: s.user_id } }),
+          folders: await this.prisma.signUserFolder.count({ where: { tenant_id: s.tenant_id, owner_user_id: s.user_id } }),
+          cloud_connections: await this.prisma.signCloudConnection.count({ where: { tenant_id: s.tenant_id, user_id: s.user_id } }),
           draft_envelopes: await this.prisma.signatureEnvelope.count({ where: { tenant_id: s.tenant_id, created_by: s.user_id, status: 'DRAFT', deleted_at: null } }),
           sent_envelopes: await this.prisma.signatureEnvelope.count({ where: { tenant_id: s.tenant_id, created_by: s.user_id, status: { notIn: ['DRAFT', 'COMPLETED'] } } }),
           completed_envelopes: await this.prisma.signatureEnvelope.count({ where: { tenant_id: s.tenant_id, created_by: s.user_id, status: 'COMPLETED' } }),

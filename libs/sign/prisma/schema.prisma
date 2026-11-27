@@ -80,6 +80,15 @@ model SignatureEnvelope {
   envelope_mode       String    @default("STANDARD")
   // M-A12 W1-E.2 — the sender's SIGN_DATE format, stamped at send (CHECK). NULL = MM/DD/YYYY.
   signer_date_format  String?
+  // SIGN-FREE-PARITY-1 S4 (migration 20261127110000) — automatic reminders. The sender's switch
+  // (default on; writable before and after send), how many went (CHECK 0..5), when the next one
+  // is due (NULL = none; partial index SignatureEnvelope_auto_reminder_due_idx for SENT /
+  // IN_PROGRESS, SQL only), and the send-time check verdict a system reminder reuses
+  // (CHECK ALLOWED | NOT_GATED; NULL = not recorded).
+  auto_reminders_enabled Boolean   @default(true)
+  auto_reminder_count    Int       @default(0)
+  next_auto_reminder_at  DateTime? @db.Timestamptz
+  send_risk_verdict      String?
 
   documents EnvelopeDocument[]
   signers   Signer[]
@@ -175,6 +184,10 @@ model Signer {
   // (sign.id_verification / sign.kba NOT_AVAILABLE). locked_at = attempts exhausted.
   identity_verification_method    String?
   identity_verification_locked_at DateTime? @db.Timestamptz
+  // SIGN-FREE-PARITY-1 S3 (migration 20261127100000) — the sender asks for a one-time code sent
+  // to this recipient's email before signing (sign.email_otp, all plans). SIGNER / WITNESS with
+  // an email only (CHECK Signer_email_otp_check).
+  email_otp_required Boolean @default(false)
   viewed_at     DateTime? @db.Timestamptz
   signed_at     DateTime? @db.Timestamptz
   declined_at   DateTime? @db.Timestamptz
@@ -1003,6 +1016,8 @@ model SignConvenienceDataPurge {
   // Privacy Notice 1.1 E-1 (ADD-only; account-close rows read 0).
   saved_signatures_deleted Int @default(0)
   contacts_deleted         Int @default(0)
+  // SIGN-FREE-PARITY-1 S6 (ADD-only; earlier rows read 0) — connected storage accounts.
+  cloud_connections_deleted Int @default(0)
 
   @@index([tenant_id, user_id])
   @@schema("sign")
@@ -1257,7 +1272,7 @@ model SignMessagingOptOut {
   @@schema("sign")
 }
 
-// §1.9 — one SMS one-time code for one signing session. Only the SHA-256 of the code is
+// §1.9 — one SMS (or, SIGN-FREE-PARITY-1 S3, email) one-time code for one signing session. Only the SHA-256 of the code is
 // kept. status ACTIVE|VERIFIED|EXPIRED|LOCKED|SUPERSEDED (CHECK).
 model SignRecipientOtpChallenge {
   id           String    @id @db.Uuid
@@ -1267,6 +1282,9 @@ model SignRecipientOtpChallenge {
   session_id   String    @db.Uuid
   phone_hash   String?
   phone_masked String?
+  // SIGN-FREE-PARITY-1 S3 — SMS_OTP | EMAIL_OTP (CHECK); email_masked for an email code only.
+  method       String    @default("SMS_OTP")
+  email_masked String?
   code_hash    String
   status       String    @default("ACTIVE")
   attempts     Int       @default(0)
@@ -1537,5 +1555,79 @@ model SignUserFavorite {
   created_at DateTime @default(now()) @db.Timestamptz
 
   @@id([tenant_id, user_id, item_kind, item_ref])
+  @@schema("sign")
+}
+
+// SIGN-FREE-PARITY-1 S7 (FP-R8) — a user's own folder for envelopes (per user, within the
+// tenant). Name ≤ 60 characters (CHECK), unique per owner without case (expression index
+// "SignUserFolder_owner_name_key" on lower(name), in the migration only). The system Deleted
+// folder (SignEnvelopePartyDeletion) is separate and unchanged.
+model SignUserFolder {
+  id            String               @id @db.Uuid
+  tenant_id     String               @db.Uuid
+  owner_user_id String               @db.Uuid
+  name          String
+  created_at    DateTime             @default(now()) @db.Timestamptz
+  updated_at    DateTime             @default(now()) @updatedAt @db.Timestamptz
+  items         SignUserFolderItem[]
+
+  @@index([tenant_id, owner_user_id], map: "SignUserFolder_owner_idx")
+  @@schema("sign")
+}
+
+// S7 — what a folder holds: item_kind SENDER (item_ref = an envelope id) or RECIPIENT
+// (item_ref = the owner's signer id, as RecipientInboxRemoval). No FK to the envelope
+// (SignUserFavorite precedent). Deleting the folder removes its items, never an envelope.
+model SignUserFolderItem {
+  folder_id String         @db.Uuid
+  item_kind String
+  item_ref  String         @db.Uuid
+  added_at  DateTime       @default(now()) @db.Timestamptz
+  folder    SignUserFolder @relation(fields: [folder_id], references: [id], onDelete: Cascade)
+
+  @@id([folder_id, item_kind, item_ref])
+  @@index([item_kind, item_ref], map: "SignUserFolderItem_item_idx")
+  @@schema("sign")
+}
+
+// SIGN-FREE-PARITY-1 S6 (FP-R7) — a connected cloud storage account (Google Drive, OneDrive,
+// Dropbox, Box) of one user in one tenant. Tokens are AES-256-GCM ciphertext under
+// SIGN_CLOUD_TOKEN_KEY (never plaintext). Convenience data: deleted on disconnect, account
+// close, privacy deletion and the E-1 retention purge.
+model SignCloudConnection {
+  id                       String    @id @db.Uuid
+  tenant_id                String    @db.Uuid
+  user_id                  String    @db.Uuid
+  provider                 String
+  account_label            String?
+  access_token_ciphertext  String
+  refresh_token_ciphertext String?
+  access_token_expires_at  DateTime? @db.Timestamptz
+  scopes                   String
+  created_at               DateTime  @default(now()) @db.Timestamptz
+  updated_at               DateTime  @default(now()) @db.Timestamptz
+  last_used_at             DateTime? @db.Timestamptz
+
+  @@unique([tenant_id, user_id, provider], map: "SignCloudConnection_owner_provider_key")
+  @@schema("sign")
+}
+
+// SIGN-FREE-PARITY-1 S6 — one pending OAuth connect: sha256 of the state (never the raw
+// value), the encrypted PKCE verifier, where to return. Short lived, single use.
+model SignCloudOAuthState {
+  id                       String    @id @db.Uuid
+  tenant_id                String    @db.Uuid
+  user_id                  String    @db.Uuid
+  provider                 String
+  state_sha256             String    @unique(map: "SignCloudOAuthState_state_sha256_key")
+  code_verifier_ciphertext String
+  client                   String
+  return_path              String?
+  created_at               DateTime  @default(now()) @db.Timestamptz
+  expires_at               DateTime  @db.Timestamptz
+  consumed_at              DateTime? @db.Timestamptz
+
+  @@index([tenant_id, user_id], map: "SignCloudOAuthState_owner_idx")
+  @@index([expires_at], map: "SignCloudOAuthState_expires_at_idx")
   @@schema("sign")
 }

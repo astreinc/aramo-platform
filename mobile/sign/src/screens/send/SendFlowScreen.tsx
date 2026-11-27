@@ -261,6 +261,7 @@ export function SendFlowScreen({ navigation, route }: Props) {
         online={online}
         onSend={() => void send()}
         onSaveDraft={() => void saveDraft()}
+        workspace={services.workspace}
       />
     ) : null;
 

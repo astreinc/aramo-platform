@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 0, "libs": 0, "total": 91 },
+  "aliasTotals": { "apps": 0, "libs": 0, "total": 92 },
   "aliases": {
     "@aramo/activity": "./libs/activity/src/index.ts",
     "@aramo/ai-draft": "./libs/ai-draft/src/index.ts",
@@ -73,6 +73,7 @@
     "@aramo/settings": "./libs/settings/src/index.ts",
     "@aramo/sign": "./libs/sign/src/index.ts",
     "@aramo/sign-client": "./libs/sign-client/src/index.ts",
+    "@aramo/sign-cloud-storage": "./libs/sign-cloud-storage/src/index.ts",
     "@aramo/sign-fields": "./libs/sign-fields/src/index.ts",
     "@aramo/sign-service": "./apps/sign-service/src/app/app.module.ts",
     "@aramo/signature-routing": "./libs/signature-routing/src/index.ts",
@@ -1539,6 +1540,7 @@
       "signEntryActivated",
       "signEntryUrl",
       "smsVerificationAdapterFromEnv",
+      "stepUpOutstanding",
       "unknownGeoEvidence",
       "usProfileIneligibility",
       "validateOrganizationDetails",
@@ -2426,6 +2428,7 @@
       "ACCESS_CODE_MAX_LENGTH",
       "ACCESS_CODE_MIN_LENGTH",
       "ACCESS_CODE_VERIFIED_EVENT",
+      "AUTO_REMINDER_CADENCE",
       "AbuseReportService",
       "AttestedNameRequiredError",
       "BRANDING_DISPLAY_NAME_MAX",
@@ -2572,6 +2575,7 @@
       "SELF_SIGN_SESSION_ISSUED_EVENT",
       "SELF_SIGN_SESSION_TTL_MS",
       "SENDER_DIRECTORY_PORT",
+      "SEND_RISK_VERDICTS",
       "SIGNER_ATTESTED_NAME_PORT",
       "SIGNER_DELEGATED_EVENT",
       "SIGNER_LINK_MESSAGING_PORT",
@@ -2601,8 +2605,10 @@
       "SessionIssueRefusedError",
       "SignArtifactCustodyRepository",
       "SignBrandingRepository",
+      "SignCloudStorageRepository",
       "SignContactDuplicateError",
       "SignContactRepository",
+      "SignFolderNameTakenError",
       "SignIdempotencyRepository",
       "SignIntegrationRepository",
       "SignMessagingRepository",
@@ -2611,6 +2617,7 @@
       "SignPurgeRepository",
       "SignReportRepository",
       "SignSavedSignatureRepository",
+      "SignUserFolderRepository",
       "SignUserProfileRepository",
       "SignWebhookRepository",
       "SignatureFieldIncompleteError",
@@ -2637,6 +2644,10 @@
       "applyReminderLimits",
       "assertIdentityVerificationCleared",
       "assertQesSatisfied",
+      "autoReminderAfterSent",
+      "autoReminderDueAt",
+      "autoReminderOnEnable",
+      "autoReminderVerdictAllows",
       "awaitingYou",
       "awaitingYouSteps",
       "backoffMs",
@@ -2734,11 +2745,20 @@
       "ALL_FIELD_TYPES",
       "ARRANGED_PURCHASE_BLOCKED",
       "ARRANGED_PURCHASE_REFUSALS",
+      "AUTO_REMINDER_CADENCE",
+      "AUTO_REMINDER_COPY",
+      "AUTO_REMINDER_SETTABLE_STATUSES",
       "AttestedNameRequiredError",
       "CHECKBOX_GROUP_KEY_MAX",
       "CHECKBOX_GROUP_RULES",
       "CHECKBOX_LABEL_MAX",
       "CHECK_FIELD_TYPES",
+      "CLOUD_EXPORT_FOLDER",
+      "CLOUD_PROVIDERS",
+      "CLOUD_PROVIDER_FEATURE_KEYS",
+      "CLOUD_PROVIDER_LABELS",
+      "CLOUD_STORAGE_COPY",
+      "CLOUD_STORAGE_REFUSAL_COPY",
       "CONDITION_DEPTH_MAX",
       "CONDITION_TRIGGER_TYPES",
       "COPY_DELIVERIES",
@@ -2746,8 +2766,10 @@
       "DEFAULT_SIGN_DATE_FORMAT",
       "DELEGATE_NAME_MAX",
       "DELEGATE_REASON_MAX",
+      "DELETED_FOLDER",
       "DROPDOWN_CHOICES_MAX",
       "E164_PATTERN",
+      "EMAIL_CODE_OPTION",
       "EMAIL_MAX",
       "EMAIL_PATTERN",
       "ENVELOPE_ALLOWANCE_KEY",
@@ -2773,6 +2795,9 @@
       "FIELD_TYPE_KEYS",
       "FIELD_VALIDATIONS",
       "FIELD_VALUE_REFUSAL_REASONS",
+      "FOLDERS_PER_USER_MAX",
+      "FOLDER_COPY",
+      "FOLDER_NAME_MAX",
       "INBOX_ACTION_KEYS",
       "INBOX_ITEM_CHANGED",
       "IdempotencyKeyReuseError",
@@ -2799,6 +2824,9 @@
       "PDF_SCRIPTS_WITH_IMPORT_COPY",
       "PENDING_SIGNER_STATUSES",
       "PHONE_HINT",
+      "PHONE_STEP_UP_COPY",
+      "PHONE_STEP_UP_REASON",
+      "PHONE_STEP_UP_REFUSAL_COPY",
       "PICKER_TYPES",
       "PROFILE_OFFER_COPY",
       "PROFILE_TEXT_FIELD_TYPES",
@@ -2816,6 +2844,9 @@
       "SENDER_HELD_PREFILL_TYPES",
       "SIGNABLE_ENVELOPE_STATUSES",
       "SIGNERS_FULL_MESSAGE",
+      "SIGNER_CODE_COPY",
+      "SIGNER_CODE_LOCKED",
+      "SIGNER_CODE_ROUTE",
       "SIGNER_FIELD_VALUE_COPY",
       "SIGNER_FIELD_VALUE_FALLBACK",
       "SIGNER_NAME_MODES",
@@ -2824,6 +2855,7 @@
       "SIGN_DATE_FORMATS",
       "SIGN_DATE_PREVIEW_NOTE",
       "SIGN_SUBJECT_PREFIX",
+      "STEP_UP_CODE_LENGTH",
       "STORAGE_CAPACITY_KEY",
       "STORAGE_FULL",
       "SessionIssueRefusedError",
@@ -2842,8 +2874,16 @@
       "arrangedPlanLabel",
       "arrangedPurchaseRefusal",
       "attachmentsRemovedNotice",
+      "autoReminderAfterSent",
+      "autoReminderDueAt",
+      "autoReminderOnEnable",
+      "autoReminderStatusLine",
+      "canCreateFolder",
+      "canSetAutoReminders",
       "checkPickedFile",
       "checkboxGroupOf",
+      "cloudConnectResultOf",
+      "cloudProvidersOf",
       "conditionMetBy",
       "convertibleWordName",
       "copyRecipients",
@@ -2865,6 +2905,7 @@
       "fieldValueDisplay",
       "fieldValueRefusal",
       "fieldValueRefusalText",
+      "folderNameRefusal",
       "formatChosenDate",
       "formatNumberValue",
       "formatSignDate",
@@ -2874,6 +2915,7 @@
       "inboxActionsOf",
       "incompleteReasonMessage",
       "isArrangedPlan",
+      "isCloudProvider",
       "isCopyRecipient",
       "isDailyAllowance",
       "isDraftEditable",
@@ -2899,8 +2941,10 @@
       "isSignerEditorKind",
       "isSignerLocked",
       "isSigningRecipient",
+      "isStepUpCode",
       "isSuggestedFieldType",
       "isTerminalEnvelopeStatus",
+      "isUserFolderId",
       "isValidAccessCode",
       "isValidDeclineReason",
       "isValidDelegate",
@@ -2914,8 +2958,11 @@
       "messagingOffered",
       "nextReminderAt",
       "normalizeAccessCode",
+      "normalizeFolderName",
       "normalizeSignerInput",
+      "normalizeStepUpCode",
       "numberPrefixOf",
+      "offersPhoneStepUp",
       "optionalMark",
       "optionalSuffix",
       "orphanedConditionIndexes",
@@ -2948,7 +2995,11 @@
       "shownFields",
       "signDatePreview",
       "signatureRequestSubject",
+      "signedCopyName",
       "signerClearRefusal",
+      "signerCodeMethodOf",
+      "signerCodeSendRefusal",
+      "signerCodeVerifyRefusal",
       "signerFieldCaption",
       "signerFieldPlaceholder",
       "signerFieldTooltip",
@@ -2970,6 +3021,25 @@
       "witnessReady",
       "witnessTargets",
       "wordUploadEnabled"
+    ],
+    "@aramo/sign-cloud-storage": [
+      "BoxClient",
+      "DropboxClient",
+      "GoogleDriveClient",
+      "OAUTH_SPECS",
+      "OneDriveClient",
+      "authorizeUrl",
+      "cloudDriveClient",
+      "driveLiteral",
+      "dropboxArg",
+      "exchangeCode",
+      "extensionOf",
+      "numberedName",
+      "pkceChallenge",
+      "randomToken",
+      "refreshAccessToken",
+      "revokeGrant",
+      "sha256Hex"
     ],
     "@aramo/sign-fields": [
       "CHECKBOX_GROUP_RULES",
@@ -5376,6 +5446,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-client-c1-actions.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-cloud-storage.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-free-parity-1-folders.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -9441,7 +9523,19 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-cloud-storage.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-custom-roles.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-email-otp.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -12247,6 +12341,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/CloudStorage.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/ContactsPage.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
@@ -12326,6 +12426,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/PersonalTemplates.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/PhoneStepUp.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
       },
@@ -13057,6 +13163,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sender-phone-step-up.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-account.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -13094,6 +13206,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-custom-roles.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-free-parity-1-folders.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -13172,6 +13290,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-webhooks.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-whatsapp-plan.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -15067,7 +15191,31 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-cloud-storage.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-email-otp.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-event-grant.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-free-parity-1-auto-reminders.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-free-parity-1-folders.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -15226,6 +15374,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/folders.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/EnvelopeDetail.reminder.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
@@ -15244,6 +15398,7 @@
       },
       { "project": "aramo-sign-web", "status": "production" },
       { "project": "sign", "status": "production" },
+      { "project": "sign-cloud-storage", "status": "production" },
       {
         "from": "mobile/sign/src/api/refusalMessages.ts",
         "project": "sign-mobile",
@@ -15251,6 +15406,16 @@
       },
       {
         "from": "mobile/sign/src/features/account/billing.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/cloud/CloudStorageViews.tsx",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/cloud/cloudStorage.ts",
         "project": "sign-mobile",
         "status": "unscoped"
       },
@@ -15301,6 +15466,16 @@
       },
       {
         "from": "mobile/sign/src/features/editor/senderSuggestions.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/folders/FolderSheets.tsx",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/folders/__tests__/folders.test.tsx",
         "project": "sign-mobile",
         "status": "unscoped"
       },
@@ -15455,6 +15630,26 @@
         "status": "unscoped"
       },
       {
+        "from": "mobile/sign/src/screens/send/PhoneStepUpCard.tsx",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/screens/send/RecipientOptions.tsx",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/screens/send/RecipientsStep.tsx",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/screens/send/ReviewStep.tsx",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
         "from": "mobile/sign/src/screens/send/__tests__/DocumentsStep.test.tsx",
         "project": "sign-mobile",
         "status": "unscoped"
@@ -15470,8 +15665,21 @@
         "project": "sign-service",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-free-parity-1-auto-reminders.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-free-parity-1-folders.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
       { "project": "sign-service", "status": "production" }
     ],
+    "@aramo/sign-cloud-storage": [{ "project": "sign-service", "status": "production" }],
     "@aramo/sign-fields": [
       {
         "excludedBy": "src/tests/**/*",
@@ -16045,7 +16253,19 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-cloud-storage.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-custom-roles.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-email-otp.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -17213,6 +17433,13 @@
       "root": "libs/sign-client",
       "sourceRoot": "libs/sign-client/src",
       "tags": ["scope:sign", "type:client-shared"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "sign-cloud-storage",
+      "root": "libs/sign-cloud-storage",
+      "sourceRoot": "libs/sign-cloud-storage/src",
+      "tags": ["scope:sign"],
       "targets": ["build", "lint", "test"]
     },
     {

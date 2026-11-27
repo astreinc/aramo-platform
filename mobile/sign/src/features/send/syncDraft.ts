@@ -388,16 +388,24 @@ export async function syncDraft(deps: SyncDeps, input: SendDraft): Promise<SyncR
       p.allowDelegation !== undefined && p.allowDelegation !== (p.serverAllowDelegation ?? false)
         ? { allow_delegation: p.allowDelegation }
         : {};
+    // SIGN-FREE-PARITY-1 S4 — auto_reminders_enabled goes only when it changed here (the
+    // server default is on).
+    const autoReminders =
+      p.autoRemindersEnabled !== undefined && p.autoRemindersEnabled !== (p.serverAutoRemindersEnabled ?? true)
+        ? { auto_reminders_enabled: p.autoRemindersEnabled }
+        : {};
     const v = await api.update(envelopeId, p.etag as string, {
       ...(subject ? { subject } : {}),
       routing_mode: p.routingMode,
       message: message.length > 0 ? message : null,
       ...delegation,
+      ...autoReminders,
     });
     server = v.env;
     await save({
       etag: v.etag,
       serverAllowDelegation: v.env.allowDelegation,
+      ...(v.env.autoReminders !== null ? { serverAutoRemindersEnabled: v.env.autoReminders.enabled } : {}),
       dirty: { ...p.dirty, meta: false },
     });
   }

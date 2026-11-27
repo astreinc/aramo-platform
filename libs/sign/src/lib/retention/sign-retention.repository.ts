@@ -13,7 +13,8 @@ import { SIGN_IDEMPOTENCY_TTL_MS } from '../sign-idempotency.repository.js';
 // executed document, execution certificate, disclosure acceptance or legal
 // acceptance. The tables this file deletes from are exactly:
 //   E-1  sign.SignSavedSignature, SignContact, SignUserNotification,
-//        SignNotificationPreference, SignPushDevice, SignPushJob (one user, one tenant)
+//        SignNotificationPreference, SignPushDevice, SignPushJob, SignCloudConnection,
+//        SignCloudOAuthState (one user, one tenant)
 //   E-2  auth_storage.NativeDeviceSession (consumer 'sign' only), sign.SignPushDevice (revoked)
 //   E-3  sign.SignIdempotencyKey (expired)
 //   E-4  sign.SignNotificationOutbox (processed), sign.SignPushJob (finished)
@@ -56,6 +57,8 @@ export interface ConvenienceDeletionCounts {
   devices_deleted: number;
   devices_revoked: number;
   push_jobs_cancelled: number;
+  // SIGN-FREE-PARITY-1 S6 — connected cloud storage accounts.
+  cloud_connections_deleted: number;
 }
 
 export type ConvenienceDeletionOutcome =
@@ -92,6 +95,7 @@ const TRIGGERED_OWNERS_SQL = `
     UNION SELECT tenant_id, user_id FROM "sign"."SignNotificationPreference"
     UNION SELECT tenant_id, user_id FROM "sign"."SignPushDevice"
     UNION SELECT tenant_id, user_id FROM "sign"."SignPushJob"
+    UNION SELECT tenant_id, user_id FROM "sign"."SignCloudConnection"
   ), triggered AS (
     SELECT o.tenant_id, o.user_id, 'organization_closed' AS reason, 1 AS priority
       FROM owners o JOIN identity."Tenant" t ON t.id = o.tenant_id
@@ -179,6 +183,8 @@ export class SignRetentionRepository {
       const preferences = await tx.signNotificationPreference.deleteMany({ where: owner });
       const saved = await tx.signSavedSignature.deleteMany({ where: owner });
       const contacts = await tx.signContact.deleteMany({ where: { tenant_id: target.tenant_id, owner_user_id: target.user_id } });
+      const cloud = await tx.signCloudConnection.deleteMany({ where: owner });
+      await tx.signCloudOAuthState.deleteMany({ where: owner });
       const counts: ConvenienceDeletionCounts = {
         saved_signatures_deleted: saved.count,
         contacts_deleted: contacts.count,
@@ -187,6 +193,7 @@ export class SignRetentionRepository {
         devices_deleted: devices.count,
         devices_revoked,
         push_jobs_cancelled,
+        cloud_connections_deleted: cloud.count,
       };
       const purge_id = randomUUID();
       await tx.signConvenienceDataPurge.create({ data: { id: purge_id, ...owner, reason: target.reason, ...counts, created_at: now } });

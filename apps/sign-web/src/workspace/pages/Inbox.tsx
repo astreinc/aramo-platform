@@ -4,7 +4,8 @@ import { logout, useToast } from '@aramo/fe-foundation';
 import { inboxActionsOf } from '@aramo/sign-client';
 
 import { INBOX_ITEM_CHANGED, errorMessage, inboxApi, isInboxItemNotFound, isUpcoming, tokenFromSigningLink, type InboxItem } from '../api';
-import { Btn, TextIn } from '../ui';
+import { Btn, Icon, TextIn } from '../ui';
+import { MoveToFolderDialog, type FolderTarget } from '../folder-picker';
 
 // Sign Unified Product S-7 — "Waiting for me": documents other organizations sent
 // to the signed-in user, with recipient-only access (directive §4.6, refinement B).
@@ -24,19 +25,22 @@ function when(iso: string | null): string {
 
 // `embedded`: rendered inside the workspace shell (the sidebar provides navigation and
 // sign-out). Standalone (/inbox) is for a signed-in recipient without a Sign workspace.
-export function InboxPage({ embedded = false }: { embedded?: boolean } = {}) {
+// SIGN-FREE-PARITY-1 S7 — `folder`: only what the user put in that folder of theirs (the
+// folder page shows it under its sent envelopes: no heading, no add-link, no Deleted list).
+export function InboxPage({ embedded = false, folder }: { embedded?: boolean; folder?: string } = {}) {
   const { show: toast } = useToast();
   const [data, setData] = useState<{ waiting: InboxItem[]; completed: InboxItem[]; other: InboxItem[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [link, setLink] = useState('');
   const [busy, setBusy] = useState(false);
+  const [moving, setMoving] = useState<FolderTarget | null>(null);
 
   const load = useCallback(() => {
     inboxApi
-      .list()
+      .list(folder)
       .then(setData)
       .catch((e) => setError(errorMessage(e)));
-  }, []);
+  }, [folder]);
   useEffect(load, [load]);
 
   const add = async () => {
@@ -139,6 +143,10 @@ export function InboxPage({ embedded = false }: { embedded?: boolean } = {}) {
             Signed copy
           </Btn>
         ) : null}{' '}
+        {/* SIGN-FREE-PARITY-1 S7 — into / out of one of the user's own folders. */}
+        <Btn size="sm" variant="ghost" onClick={() => setMoving({ kind: 'inbox', id: i.id, subject: i.subject, folder_id: i.folder_id ?? null })} aria-label={`Move ${i.subject} to a folder`} title="Move to folder" data-testid={`inbox-move-${i.id}`}>
+          <Icon name="folder" />
+        </Btn>{' '}
         {/* M-A17 — every received item (added or listed automatically), any state. */}
         {actions.delete ? (
           <Btn size="sm" variant="ghost" onClick={() => void remove(i)} aria-label={`Delete ${i.subject} from your inbox`} data-testid={`inbox-delete-${i.id}`}>
@@ -162,6 +170,19 @@ export function InboxPage({ embedded = false }: { embedded?: boolean } = {}) {
       )}
     </section>
   );
+
+  const moveDialog = <MoveToFolderDialog target={moving} onClose={() => setMoving(null)} onDone={load} toast={toast} />;
+  if (folder !== undefined) {
+    const all = data === null ? [] : [...data.waiting, ...data.completed, ...data.other];
+    return (
+      <div className="sg sg-page sg-page--wide" data-testid="inbox-folder">
+        {error !== null ? <div className="sg-note">{error}</div> : null}
+        {data === null && error === null ? <div className="sg-muted">Loading…</div> : null}
+        {data !== null ? section('Received', all, 'No received documents in this folder.', 'inbox-folder-items') : null}
+        {moveDialog}
+      </div>
+    );
+  }
 
   return (
     <div className="sg sg-page sg-page--wide" data-testid="inbox">
@@ -234,6 +255,7 @@ export function InboxPage({ embedded = false }: { embedded?: boolean } = {}) {
           )}
         </>
       ) : null}
+      {moveDialog}
     </div>
   );
 }

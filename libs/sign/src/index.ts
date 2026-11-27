@@ -312,6 +312,15 @@ export {
 // Aramo Sign Mobile — notification feed, devices, preferences, push (M-A3 §1, §2, §9).
 export * from './lib/notifications/index.js';
 
+// SIGN-FREE-PARITY-1 S6 — connected cloud storage accounts and pending OAuth connects.
+export {
+  SignCloudStorageRepository,
+  type CloudOwner,
+  type CloudConnectionRow,
+  type CloudOAuthStateRow,
+  type CloudTokenWrite,
+} from './lib/cloud-storage/sign-cloud-storage.repository.js';
+
 // Aramo Sign Mobile — envelope contracts: revision preconditions, reminder limits,
 // request idempotency, inbox revalidation, saved signatures, contacts (M-A2 §2.2, M-A3 §3–§9).
 export {
@@ -370,6 +379,17 @@ export {
   type ReminderLimits,
   type ReminderHistoryEntry,
 } from './lib/reminder-limits.js';
+// SIGN-FREE-PARITY-1 S4 — automatic reminders (cadence from @aramo/sign-client, the send verdict).
+export {
+  AUTO_REMINDER_CADENCE,
+  SEND_RISK_VERDICTS,
+  autoReminderDueAt,
+  autoReminderAfterSent,
+  autoReminderOnEnable,
+  autoReminderVerdictAllows,
+  type SendRiskVerdict,
+  type AutoReminderOutcome,
+} from './lib/auto-reminders.js';
 export {
   SignIdempotencyRepository,
   SIGN_IDEMPOTENCY_TTL_MS,
@@ -412,6 +432,8 @@ export {
   type SignUserSettingsWrite,
   type SignUserDataCounts,
 } from './lib/sign-user-profile.repository.js';
+// SIGN-FREE-PARITY-1 S7 — a user's own folders for envelopes.
+export { SignUserFolderRepository, SignFolderNameTakenError, type SignFolderItemKind, type SignUserFolderRow } from './lib/sign-user-folder.repository.js';
 export { RECIPIENT_INBOX_SESSION_EVENT, type IssuedRecipientSession } from './lib/recipient-inbox.repository.js';
 // Privacy Notice 1.1 remediation (E-1 to E-4) — retention cleanup.
 export * from './lib/retention/sign-retention.repository.js';

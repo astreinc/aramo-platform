@@ -109,6 +109,21 @@ export class EsignSenderController {
     return this.run(requestId, () => this.envelopes.create(auth, body, requestId));
   }
 
+  // SIGN-FREE-PARITY-1 S7 — move an envelope the caller can see into one of their own
+  // folders (out of any other of theirs), or take it out. The envelope never changes.
+  @Put('envelopes/:id/folder')
+  @HttpCode(HttpStatus.OK)
+  @EsignSenderBoundary(ESIGN_READ_SCOPE)
+  moveToFolder(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Body() body: { folder_id?: unknown }) {
+    return this.run(requestId, () => this.envelopes.moveToFolder(auth, id, body ?? {}, requestId));
+  }
+
+  @Delete('envelopes/:id/folder')
+  @EsignSenderBoundary(ESIGN_READ_SCOPE)
+  removeFromFolder(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string) {
+    return this.run(requestId, () => this.envelopes.removeFromFolder(auth, id, requestId));
+  }
+
   @Get('envelopes/:id')
   @EsignSenderBoundary(ESIGN_READ_SCOPE)
   detail(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Res({ passthrough: true }) res: Response) {
@@ -123,11 +138,26 @@ export class EsignSenderController {
     @AuthContext() auth: AuthContextType,
     @RequestId() requestId: string,
     @Param('id') id: string,
-    @Body() body: { subject?: unknown; routing_mode?: unknown; message?: unknown },
+    @Body() body: { subject?: unknown; routing_mode?: unknown; message?: unknown; allow_delegation?: unknown; auto_reminders_enabled?: unknown },
     @Res({ passthrough: true }) res: Response,
     @Headers('if-match') ifMatch?: string,
   ) {
     return this.withEtag(res, requestId, () => this.envelopes.update(auth, id, body, requestId, ifMatch));
+  }
+
+  // SIGN-FREE-PARITY-1 S4 (FP-R5) — turn automatic reminders on or off, while drafting or after
+  // sending (the PATCH above is DRAFT-only). The sender (or a Sign admin), with If-Match.
+  @Patch('envelopes/:id/reminders')
+  @EsignSenderBoundary(ESIGN_SEND_SCOPE)
+  setAutoReminders(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+    @Param('id') id: string,
+    @Body() body: { auto_reminders_enabled?: unknown },
+    @Res({ passthrough: true }) res: Response,
+    @Headers('if-match') ifMatch?: string,
+  ) {
+    return this.withEtag(res, requestId, () => this.envelopes.setAutoReminders(auth, id, body ?? {}, requestId, ifMatch));
   }
 
   // Sign Mobile D-W6-3 — delete a DRAFT (409 envelope_not_draft otherwise). The same

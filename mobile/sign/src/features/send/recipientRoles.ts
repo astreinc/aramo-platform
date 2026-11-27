@@ -189,6 +189,7 @@ export function changeKind(
     // only a SIGNER keeps text delivery (cleared on the server too).
     ...(!linkChecks && hasCode ? { accessCode: null } : {}),
     ...(!linkChecks && r.identityCheck ? { identityCheck: null, identityDirty: true } : {}),
+    ...(!linkChecks && r.emailOtp === true ? { emailOtp: false } : {}),
     ...(kind !== 'SIGNER' && hasMessaging(r.messaging)
       ? { messaging: NO_MESSAGING, messagingDirty: true }
       : {}),
@@ -218,6 +219,8 @@ export interface RecipientWire {
   readonly access_code?: string | null;
   /** Only when changed here: a method sets it, null clears it. */
   readonly identity_verification_method?: IdentityCheck | null;
+  /** SIGN-FREE-PARITY-1 S3 — link signers only: the email code on or off (omitted keeps it). */
+  readonly email_otp_required?: boolean;
 }
 
 /** The PUT …/recipients items, in wire order. */
@@ -245,6 +248,8 @@ export function recipientsToWire(list: readonly DraftRecipient[]): RecipientWire
       ...(r.identityDirty === true
         ? { identity_verification_method: takesLinkChecks(r) ? (r.identityCheck ?? null) : null }
         : {}),
+      // Sent once set here or read from the server (absent keeps the stored value).
+      ...(takesLinkChecks(r) && r.emailOtp !== undefined ? { email_otp_required: r.emailOtp } : {}),
     };
   });
 }

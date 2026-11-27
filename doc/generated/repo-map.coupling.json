@@ -11556,12 +11556,22 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/sign-service/src/app/cloud-storage/cloud-storage.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/sign-service/src/app/custom-roles/sign-custom-roles.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/sign-service/src/app/esign-http.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/folders/sign-folders.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -11617,6 +11627,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/sign-service/src/app/payments/sign-payments-sender.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/personal/sender-phone-step-up.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -32229,6 +32244,11 @@
       "to": "libs/identity/prisma/migrations/20261113110000_tenant_billing_region_policy_in/migration.sql"
     },
     {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261127130000_sign_sender_phone_step_up_code/migration.sql"
+    },
+    {
       "from": "libs/common/src/lib/testing/skills-taxonomy-migrations.ts",
       "status": "production",
       "to": "libs/skills-taxonomy/prisma/migrations/20260915140000_init_skill_registry/migration.sql"
@@ -33211,6 +33231,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1-commercial-role-catalog-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261127130000_sign_sender_phone_step_up_code/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/identity/src/tests/ccp-a1a1-finance-amount-scope-migration.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql"
@@ -33322,6 +33348,12 @@
       "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261113110000_tenant_billing_region_policy_in/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261127130000_sign_sender_phone_step_up_code/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -34653,6 +34685,16 @@
       "from": "libs/sign-client/src/lib/turn-rules.ts",
       "status": "production",
       "to": "libs/sign/src/lib/domain/recipients.ts"
+    },
+    {
+      "from": "libs/sign-cloud-storage/project.json",
+      "status": "unscoped",
+      "to": "libs/sign-cloud-storage/src/index.ts"
+    },
+    {
+      "from": "libs/sign-cloud-storage/project.json",
+      "status": "unscoped",
+      "to": "libs/sign-cloud-storage/tsconfig.lib.json"
     },
     {
       "from": "libs/sign-fields/project.json",
@@ -39178,6 +39220,11 @@
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/selection/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/settings/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/sign-client/src/index.ts" },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
+      "to": "libs/sign-cloud-storage/src/index.ts"
+    },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/sign-fields/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/sign/src/index.ts" },
     {
@@ -39409,6 +39456,11 @@
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/selection/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/settings/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/sign-client/src/index.ts" },
+    {
+      "from": "vitest.shared.ts",
+      "status": "unscoped",
+      "to": "libs/sign-cloud-storage/src/index.ts"
+    },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/sign-fields/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/sign/src/index.ts" },
     {

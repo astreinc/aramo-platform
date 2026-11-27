@@ -6,6 +6,7 @@ import { senderApi, type LedgerEvent } from './api';
 import { customRolesVisible } from './custom-roles-api';
 import { Avatar, Bare, Btn, Icon, eventDot, eventLabel, rel } from './ui';
 import { useWorkspace } from './workspace';
+import { useFolders } from './folder-picker';
 import { LegalLinks } from './legal/LegalAcceptance';
 
 // The Sign console shell (prototype: white sidebar + top bar). Sidebar groups:
@@ -45,6 +46,15 @@ export function ConsoleShell({ children, scopes }: { children: ReactNode; scopes
   useEffect(() => setDrawer(false), [loc.pathname]);
 
   const personal = ctx.workspace === 'personal';
+  // SIGN-FREE-PARITY-1 S7 — the user's own folders (both workspaces), then "New folder".
+  const { folders } = useFolders();
+  const folderGroup: { label: string; items: NavItem[] } = {
+    label: 'Folders',
+    items: [
+      ...(folders?.items ?? []).map((f) => ({ to: `${base}/folders/${f.id}`, label: f.name, icon: 'folder' })),
+      { to: `${base}/folders?new=1`, label: 'New folder', icon: 'plus', end: true },
+    ],
+  };
   const groups: { label: string; items: NavItem[] }[] = personal
     ? [
         {
@@ -62,6 +72,7 @@ export function ConsoleShell({ children, scopes }: { children: ReactNode; scopes
             { to: `${base}/envelopes/deleted`, label: 'Deleted', icon: 'trash' },
           ],
         },
+        folderGroup,
         { label: 'Insights', items: [{ to: `${base}/activity`, label: 'Activity', icon: 'activity' }] },
         { label: 'Account', items: [{ to: `${base}/settings`, label: 'Settings', icon: 'settings' }] },
       ]
@@ -80,6 +91,7 @@ export function ConsoleShell({ children, scopes }: { children: ReactNode; scopes
             { to: `${base}/envelopes/deleted`, label: 'Deleted', icon: 'trash' },
           ],
         },
+        folderGroup,
         {
           label: 'Insights',
           items: [

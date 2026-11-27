@@ -7,6 +7,7 @@ import { isApiError } from '../../api/errors';
 import type { WorkspaceClient } from '../../api/workspaceClient';
 import { useServices } from '../../app/ServicesContext';
 import { recheckOnline } from '../../state/queryClient';
+import { fetchFolders } from '../folders/foldersApi';
 import type {
   BillingAccount,
   InboxList,
@@ -25,6 +26,8 @@ export const signKeys = {
   detail: (id: string) => ['sign', 'sender', 'envelope', id] as const,
   events: (id: string) => ['sign', 'sender', 'envelope', id, 'events'] as const,
   localDrafts: ['sign', 'local-drafts'] as const,
+  // SIGN-FREE-PARITY-1 S7 — the user's own folders.
+  folders: ['sign', 'folders'] as const,
 };
 
 const PERSIST = { persist: true } as const;
@@ -73,6 +76,16 @@ export function useInbox() {
   return useQuery({
     queryKey: signKeys.inbox,
     queryFn: () => fetchInbox(workspace),
+    meta: PERSIST,
+  });
+}
+
+/** SIGN-FREE-PARITY-1 S7 — the user's own folders (GET /v1/sign/folders). */
+export function useFolders() {
+  const { workspace } = useServices();
+  return useQuery({
+    queryKey: signKeys.folders,
+    queryFn: () => fetchFolders(workspace),
     meta: PERSIST,
   });
 }

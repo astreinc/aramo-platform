@@ -188,6 +188,31 @@ describe('Recipients step — B2 choices', () => {
     ]);
   });
 
+  // SIGN-FREE-PARITY-1 S3 — the email code: every plan, link signers only, sent only when changed.
+  it('asks for a code sent to the signer’s email; a saved one can be turned off', async () => {
+    const calls = stub(ctx({ email_otp: true }), draft([R1, { ...R2, email_otp_required: true }]));
+    renderStep2();
+    const boxes = (await screen.findAllByTestId('email-code')) as HTMLInputElement[];
+    expect(screen.getAllByText('Ask for a code sent to their email before signing')).toHaveLength(2);
+    expect(boxes[0]).not.toBeChecked();
+    expect(boxes[1]).toBeChecked();
+    fireEvent.click(boxes[0]!);
+    fireEvent.click(boxes[1]!);
+    fireEvent.click(screen.getByTestId('recipients-continue'));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect((calls[0]!.body as { recipients: unknown[] }).recipients).toEqual([
+      { id: 'r1', name: 'Alex Lee', email: 'alex@x.test', recipient_kind: 'SIGNER', copy_delivery: null, email_otp_required: true },
+      { id: 'r2', name: 'Casey', email: 'casey@x.test', recipient_kind: 'SIGNER', copy_delivery: null, email_otp_required: false },
+    ]);
+  });
+
+  it('the email code is not offered while sign.email_otp is unavailable', async () => {
+    stub(ctx({ access_code: true }), draft([R1]));
+    renderStep2();
+    await screen.findAllByTestId('recipient-role');
+    expect(screen.queryByTestId('email-code')).not.toBeInTheDocument();
+  });
+
   it('reads saved text delivery and clears it when the sender goes back to email only', async () => {
     const calls = stub(ctx({ sms_delivery: true }), draft([R1]), [{ signer_id: 'r1', delivery_channel: 'SMS', sms_otp_required: false, phone_e164: '+14155550123' }]);
     renderStep2();

@@ -176,7 +176,8 @@ describe('SenderEnvelopeService — preconditions, message and detail fields', (
     await ready.svc.send(NATIVE, ENV, { subject: 'Renamed' }, 'r', { ifMatch: envelopeEtag(ENV, 4) });
     expect(ready.repo.updateDraft).toHaveBeenNthCalledWith(1, expect.objectContaining({ subject: 'Renamed', expected_revision: 4 }));
     expect(ready.repo.updateDraft).toHaveBeenNthCalledWith(2, expect.objectContaining({ execution_mode: 'SINGLE_SIGNATURE', expected_revision: 5 }));
-    expect(ready.provider.sendEnvelope).toHaveBeenCalledWith(BROWSER.tenant_id, ENV, BROWSER.sub, undefined, { expected_revision: 6 });
+    // SIGN-FREE-PARITY-1 S4 — a Business send records NOT_GATED for its automatic reminders.
+    expect(ready.provider.sendEnvelope).toHaveBeenCalledWith(BROWSER.tenant_id, ENV, BROWSER.sub, undefined, { auto_reminders: { send_verdict: 'NOT_GATED' }, expected_revision: 6 });
     void repo;
   });
 

@@ -54,6 +54,7 @@
       "@aramo/documents-rendering": ["./libs/documents-rendering/src/index.ts"],
       "@aramo/sign": ["./libs/sign/src/index.ts"],
       "@aramo/sign-client": ["./libs/sign-client/src/index.ts"],
+      "@aramo/sign-cloud-storage": ["./libs/sign-cloud-storage/src/index.ts"],
       "@aramo/sign-fields": ["./libs/sign-fields/src/index.ts"],
       "@aramo/template-content": ["./libs/template-content/src/index.ts"],
       "@aramo/field-placement-web": ["./libs/field-placement-web/src/index.ts"],

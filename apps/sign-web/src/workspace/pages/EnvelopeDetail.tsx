@@ -1,11 +1,25 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { ApiError, Dialog } from '@aramo/fe-foundation';
-import { SIGNABLE_ENVELOPE_STATUSES, VOID_REASON_COPY, VOID_REASON_MAX, nextReminderAt, remindableNow, senderActionsOf, voidReasonProblem } from '@aramo/sign-client';
+import {
+  AUTO_REMINDER_COPY,
+  SIGNABLE_ENVELOPE_STATUSES,
+  VOID_REASON_COPY,
+  VOID_REASON_MAX,
+  autoReminderStatusLine,
+  canSetAutoReminders,
+  nextReminderAt,
+  remindableNow,
+  senderActionsOf,
+  voidReasonProblem,
+} from '@aramo/sign-client';
 
 import { PURGE_LEVELS, errorMessage, fetchSourcePdf, isReminderStale, nextSendTime, purgeLevelLabel, senderApi, sourceLabel, type EnvelopeDetail as Detail, type Evidence, type LedgerEvent, type PurgeLevel } from '../api';
 import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, Loading, RecipientPill, Sel, StatusPill, TextIn, downloadBase64, eventDot, eventLabel, fmtDate, maskEmail, LinkBtn } from '../ui';
 import { useWorkspace } from '../workspace';
+import { MoveToFolderDialog, type FolderTarget } from '../folder-picker';
+
+import { CloudExportButton } from './CloudStorage';
 
 // Envelope detail (read-only). Client Rule Consolidation C3 — every action button shows only
 // when the server's `actions` allows it (Send reminder, Void, Download documents and
@@ -42,6 +56,8 @@ export function EnvelopeDetail() {
   const [actionError, setActionError] = useState('');
   // UAT SND-14 — the clock the reminder rule reads; moved on when the soonest cooldown ends.
   const [now, setNow] = useState(() => Date.now());
+  // SIGN-FREE-PARITY-1 S7 — "Move to folder" (the user's own folders).
+  const [moving, setMoving] = useState<FolderTarget | null>(null);
 
   const load = useCallback(() => {
     senderApi
@@ -99,6 +115,22 @@ export function EnvelopeDetail() {
 
   const ordered = env.routing_mode === 'SEQUENTIAL';
   const next = ordered ? env.recipients.find((r) => r.id === env.next_signer_id) : undefined;
+  // SIGN-FREE-PARITY-1 S4 — automatic reminders: the one status line (@aramo/sign-client), and the
+  // switch for whoever may void (the same authority the server checks on PATCH …/reminders).
+  const auto = live && env.auto_reminders !== undefined && canSetAutoReminders(env) ? env.auto_reminders : null;
+  const autoLine = autoReminderStatusLine(auto, (iso) => fmtDate(iso, true));
+  const toggleAutoReminders = async (enabled: boolean) => {
+    setBusy(true);
+    try {
+      setEnv(await senderApi.setAutoReminders(env.id, enabled));
+      toast(enabled ? AUTO_REMINDER_COPY.turned_on : AUTO_REMINDER_COPY.turned_off);
+    } catch (e) {
+      toast(errorMessage(e));
+      if (isReminderStale(e)) load();
+    } finally {
+      setBusy(false);
+    }
+  };
 
   // Multi-Signer M-3a — remind one signer, or (no id) everyone who may sign now.
   const remind = async (signer?: { id: string; name: string }) => {
@@ -241,6 +273,9 @@ export function EnvelopeDetail() {
               Download certificate
             </Btn>
           ) : null}
+          {/* SIGN-FREE-PARITY-1 S6 — the signed copy to connected cloud storage (same rule as
+              Download; shown only while the server offers a provider). */}
+          {actions.download ? <CloudExportButton envelopeId={env.id} /> : null}
           {actions.remind ? (
             <Btn onClick={() => void remind()} disabled={busy || remindable.length === 0} data-testid="send-reminder">
               Send reminder
@@ -262,6 +297,9 @@ export function EnvelopeDetail() {
               Purge…
             </Btn>
           ) : null}
+          <Btn onClick={() => setMoving({ kind: 'sender', id: env.id, subject: env.subject, folder_id: env.folder_id ?? null })} disabled={busy} data-testid="move-to-folder">
+            <Icon name="folder" size={14} /> Move to folder
+          </Btn>
           {canDelete ? (
             <Btn onClick={() => setDeleteOpen(true)} disabled={busy} data-testid="delete-envelope">
               <Icon name="trash" size={14} /> Delete
@@ -310,6 +348,16 @@ export function EnvelopeDetail() {
         {env.expires_at !== null && live ? ` · Signing link valid until ${fmtDate(env.expires_at)}` : ''}
         {env.completed_at !== null ? ` · completed ${fmtDate(env.completed_at, true)}` : ''}
       </p>
+      {auto !== null && autoLine !== null ? (
+        <p className="sg-muted" style={{ marginTop: -10, marginBottom: 18, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }} data-testid="auto-reminders">
+          <span role="status">{autoLine}</span>
+          {actions.void ? (
+            <LinkBtn disabled={busy} onClick={() => void toggleAutoReminders(!auto.enabled)} data-testid="auto-reminders-toggle">
+              {auto.enabled ? AUTO_REMINDER_COPY.turn_off : AUTO_REMINDER_COPY.turn_on}
+            </LinkBtn>
+          ) : null}
+        </p>
+      ) : null}
       <div className="sg-grid sg-grid--main">
         <div className="sg-grid">
           <section className="sg-card">
@@ -461,6 +509,7 @@ export function EnvelopeDetail() {
           </section>
         </div>
       </div>
+      <MoveToFolderDialog target={moving} onClose={() => setMoving(null)} onDone={load} toast={toast} />
       <Dialog
         open={voidOpen}
         onOpenChange={(o) => {

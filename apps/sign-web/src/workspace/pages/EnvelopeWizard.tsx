@@ -2,10 +2,16 @@ import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Input } from '@aramo/fe-foundation';
 import {
+  EMAIL_CODE_OPTION,
   PDF_PICKER_TYPES,
+  PHONE_STEP_UP_REASON,
+  REFUSAL_COPY,
   SIGNERS_FULL_MESSAGE,
   attachmentsRemovedNotice,
+  offersPhoneStepUp,
+  type PhoneStepUpStatus,
   checkPickedFile,
+  cloudProvidersOf,
   danglingWitness,
   isWitnessable,
   isValidEmail,
@@ -14,6 +20,7 @@ import {
   templateAccess,
   titleFromFilename,
   SIGN_SUBJECT_PREFIX,
+  AUTO_REMINDER_COPY,
 } from '@aramo/sign-client';
 
 import {
@@ -28,7 +35,9 @@ import {
   isCopyRecipient,
   MAX_COPY_RECIPIENTS,
   MAX_SIGNERS,
+  refusalReason,
   senderApi,
+  stepUpApi,
   type ContactRow,
   type CopyDelivery,
   type DeliveryChannel,
@@ -37,13 +46,16 @@ import {
   type RecipientKind,
   type RecipientMessaging,
   type RoutingMode,
+  type UploadedDocument,
   validAccessCode,
 } from '../api';
 import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, LinkBtn, Loading, RecipientPill, Sel, TextIn, fmtBytes } from '../ui';
 import { useWorkspace } from '../workspace';
 
+import { CloudImportButton } from './CloudStorage';
 import { selfSignRefusal } from './EnvelopeDetail';
 import { PersonalUpgradeLink } from './PersonalAllowance';
+import { PhoneStepUpPanel } from './PhoneStepUp';
 import { PrepareEditor } from './PrepareEditor';
 import { readinessOf } from './readiness';
 
@@ -203,6 +215,19 @@ function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange:
     }
     setBusy('');
     setNotices(removed);
+    await afterUpload();
+  };
+
+  // S6 + PDF-ATTACH-1 — a cloud import goes through the same upload, so it shows the same notice when
+  // the PDF's attached files were removed.
+  const afterCloudImport = async (uploaded: UploadedDocument, name: string) => {
+    const notice = attachmentsRemovedNotice(uploaded.attachments_removed);
+    setNotices(notice === null ? [] : [`${name}: ${notice}`]);
+    await afterUpload();
+  };
+
+  // After an upload (from the device or from cloud storage): read the envelope again.
+  const afterUpload = async () => {
     let d = await senderApi.detail(env.id);
     // Prototype: an untitled envelope takes its first document's title.
     const first = d.documents[0];
@@ -259,11 +284,16 @@ function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange:
           </label>
           {/* DOC-TEMPLATE-LIB-1 T-5 — start from one of the organization's document templates
               (shown only when the plan capability and the template permission allow it). */}
-          {templatesUsable ? (
+          {/* SIGN-FREE-PARITY-1 S6 — a PDF from connected cloud storage, through the same upload
+              (shown only while the server offers a provider). */}
+          {templatesUsable || cloudProvidersOf(ctx).length > 0 ? (
             <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-              <Btn onClick={() => nav(`${base}/templates`)} data-testid="use-a-template">
-                Use a template
-              </Btn>
+              {templatesUsable ? (
+                <Btn onClick={() => nav(`${base}/templates`)} data-testid="use-a-template">
+                  Use a template
+                </Btn>
+              ) : null}
+              <CloudImportButton envelopeId={env.id} onImported={afterCloudImport} />
             </div>
           ) : null}
           {busy !== '' ? (
@@ -375,6 +405,8 @@ interface DraftRecipient {
   accessCode?: string | null;
   // B2 / §1.9 — the identity check (null = none).
   idv: IdentityVerificationMethod | null;
+  // SIGN-FREE-PARITY-1 S3 — ask for a code sent to the recipient's email before signing.
+  emailOtp: boolean;
   // B2 / §1.7–§1.9 — the text-message choices; undefined = as saved on the server.
   msg?: Msg;
 }
@@ -430,6 +462,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
     witnessFor: r.recipient_kind === 'WITNESS' ? (r.witness_for_signer_id ?? null) : null,
     accessCodeSet: r.access_code_set === true,
     idv: r.identity_verification_method ?? null,
+    emailOtp: r.email_otp_required === true,
   });
   const [list, setList] = useState<DraftRecipient[]>(() => env.recipients.map(toDraft));
   // Consolidated Directive B2 — each control shows only while the sender context reports it available.
@@ -437,6 +470,8 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
   const options = sendFeaturesOf(ctx);
   const messagingOn = options.sms || options.whatsapp || options.smsCode;
   const [allowDelegation, setAllowDelegation] = useState(env.allow_delegation === true);
+  // SIGN-FREE-PARITY-1 S4 — automatic reminders (default on; all plans).
+  const [autoReminders, setAutoReminders] = useState(env.auto_reminders?.enabled !== false);
   // The text-message choices saved on the server, by recipient id (read only when available).
   const [msgSaved, setMsgSaved] = useState<Record<string, Msg>>({});
   useEffect(() => {
@@ -478,7 +513,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
       return;
     }
     setError('');
-    setList((l) => [...l, { key: `new-${(keyGen.current += 1)}`, name, email, kind, copy: 'ON_COMPLETION', assign: assign && kind === 'SIGNER', witnessFor: null, accessCodeSet: false, idv: null }]);
+    setList((l) => [...l, { key: `new-${(keyGen.current += 1)}`, name, email, kind, copy: 'ON_COMPLETION', assign: assign && kind === 'SIGNER', witnessFor: null, accessCodeSet: false, idv: null, emailOtp: false }]);
   };
   const myEmail = ctx.user.email?.trim().toLowerCase() ?? '';
   const isMine = (email: string) => myEmail !== '' && email.trim().toLowerCase() === myEmail;
@@ -495,7 +530,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
             kind,
             ...(kind === 'RECEIVES_COPY' || kind === 'WITNESS' ? { assign: false } : {}),
             witnessFor: kind === 'WITNESS' ? (r.witnessFor ?? firstSigner) : null,
-            ...(signsByLink(kind) ? {} : { accessCode: r.accessCodeSet ? null : undefined, idv: null }),
+            ...(signsByLink(kind) ? {} : { accessCode: r.accessCodeSet ? null : undefined, idv: null, emailOtp: false }),
           };
         }
         return !isSigning(kind) && r.witnessFor === key ? { ...r, witnessFor: null } : r;
@@ -525,11 +560,13 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
         (r.kind === 'SIGNER' && isMine(r.email)) !== was.assign ||
         r.witnessFor !== was.witnessFor ||
         r.idv !== was.idv ||
+        r.emailOtp !== was.emailOtp ||
         r.accessCode !== undefined
       );
     });
   const routingDirty = routing !== (env.routing_mode ?? 'PARALLEL');
   const delegationDirty = allowDelegation !== (env.allow_delegation === true);
+  const autoRemindersDirty = env.auto_reminders !== undefined && autoReminders !== env.auto_reminders.enabled;
   const anyMsgDirty = list.some(msgDirty);
   const duplicate = (() => {
     const seen = new Set<string>();
@@ -558,7 +595,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
 
   const save = async (to: string) => {
     setError('');
-    if (!listDirty && !routingDirty && !delegationDirty && !anyMsgDirty) {
+    if (!listDirty && !routingDirty && !delegationDirty && !autoRemindersDirty && !anyMsgDirty) {
       nav(to);
       return;
     }
@@ -576,6 +613,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
       let d = env;
       if (routingDirty) d = await senderApi.setRouting(env.id, routing);
       if (delegationDirty) d = await senderApi.setAllowDelegation(env.id, allowDelegation);
+      if (autoRemindersDirty) d = await senderApi.setAutoReminders(env.id, autoReminders);
       if (listDirty) {
         const index = new Map(list.map((r, i) => [r.key, i]));
         d = await senderApi.recipients(
@@ -594,6 +632,10 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
             ...(r.accessCode !== undefined ? { access_code: r.accessCode === null ? null : r.accessCode.trim() } : {}),
             ...(r.idv !== (r.id !== undefined ? (env.recipients.find((x) => x.id === r.id)?.identity_verification_method ?? null) : null)
               ? { identity_verification_method: signsByLink(r.kind) ? r.idv : null }
+              : {}),
+            // SIGN-FREE-PARITY-1 S3 — the email code, sent only when changed (omitted keeps it).
+            ...(signsByLink(r.kind) && r.emailOtp !== (r.id !== undefined ? env.recipients.find((x) => x.id === r.id)?.email_otp_required === true : false)
+              ? { email_otp_required: r.emailOtp }
               : {}),
           })),
         );
@@ -669,6 +711,24 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                 <p className="sg-muted" style={{ fontSize: 12.5, margin: '4px 0 0' }}>
                   A signer can pass their part to another person, who signs in their own name. The hand-off is recorded.
                 </p>
+              ) : null}
+              {/* SIGN-FREE-PARITY-1 S4 — automatic reminders (all plans; shown once the server reports them). */}
+              {env.auto_reminders !== undefined && env.mode !== 'self' ? (
+                <>
+                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10, fontSize: 13 }}>
+                    <Input
+                      unstyled
+                      type="checkbox"
+                      checked={autoReminders}
+                      onChange={(e) => setAutoReminders(e.target.checked)}
+                      data-testid="auto-reminders"
+                    />
+                    {AUTO_REMINDER_COPY.label}
+                  </label>
+                  <p className="sg-muted" style={{ fontSize: 12.5, margin: '4px 0 0' }}>
+                    {AUTO_REMINDER_COPY.help}
+                  </p>
+                </>
               ) : null}
             </div>
           </section>
@@ -763,6 +823,12 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                   </Field>
                 </div>
                 {options.accessCode && signsByLink(r.kind) ? <AccessCodeControl r={r} onChange={(accessCode) => upd(r.key, { accessCode })} /> : null}
+                {(options.emailCode || r.emailOtp) && signsByLink(r.kind) ? (
+                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }} title={EMAIL_CODE_OPTION.hint}>
+                    <Input unstyled type="checkbox" checked={r.emailOtp} onChange={(e) => upd(r.key, { emailOtp: e.target.checked })} data-testid="email-code" />
+                    {EMAIL_CODE_OPTION.label}
+                  </label>
+                ) : null}
                 {messagingOn && r.kind === 'SIGNER' ? <TextMessageControl r={r} msg={msgFor(r)} onChange={(m) => upd(r.key, { msg: m })} /> : null}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                   <span style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -980,6 +1046,9 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
   const [sending, setSending] = useState(false);
   // Aramo Sign Personal (Free) §4 — at a limit, offer the Business route (never a charge).
   const [upgrade, setUpgrade] = useState(false);
+  // SIGN-FREE-PARITY-1 S2 — a phone_verification_required refusal with self-serve on
+  // (the server's step-up status) offers the verify panel instead of the plain message.
+  const [stepUp, setStepUp] = useState<PhoneStepUpStatus | null>(null);
   const ready = readinessOf(env);
 
   // Persist the message when it differs from what the server holds; "" clears it.
@@ -994,6 +1063,7 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
     setError('');
     setProblems([]);
     setUpgrade(false);
+    setStepUp(null);
     setSending(true);
     try {
       await saveMessage();
@@ -1003,6 +1073,12 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
       onSent();
       nav(`${base}/envelopes/${env.id}/sent`);
     } catch (e) {
+      const reason = refusalReason(e);
+      const offer = reason === PHONE_STEP_UP_REASON ? await stepUpApi.status().catch(() => null) : null;
+      if (offersPhoneStepUp(reason, offer)) {
+        setStepUp(offer);
+        return;
+      }
       setError(errorMessage(e));
       setUpgrade(ctx.workspace === 'personal' && isAllowanceLimit(e));
       const det = (e as { details?: { problems?: unknown } }).details;
@@ -1082,6 +1158,7 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
                       {r.recipient_kind === 'WITNESS' ? ` · witnesses ${env.recipients.find((x) => x.id === r.witness_for_signer_id)?.name ?? 'a signer'}` : ''}
                       {r.identity_verification_method != null ? ` · ${lowerFirst(IDV_LABEL[r.identity_verification_method])}` : ''}
                       {r.access_code_set === true ? ' · access code' : ''}
+                      {r.email_otp_required === true ? ' · email code' : ''}
                     </span>
                   </div>
                   <span className="sg-muted" style={{ fontSize: 12.5 }}>
@@ -1119,6 +1196,16 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
               Each signer gets an email with a secure link to sign at sign.aramo.ai. They don’t need an Aramo account.
             </p>
             {error !== '' ? <ErrorBox>{error}</ErrorBox> : null}
+            {stepUp !== null ? (
+              <PhoneStepUpPanel
+                status={stepUp}
+                onVerified={() => void send()}
+                onClose={() => {
+                  setStepUp(null);
+                  setError(REFUSAL_COPY[PHONE_STEP_UP_REASON] ?? '');
+                }}
+              />
+            ) : null}
             {upgrade ? <PersonalUpgradeLink /> : null}
             {problems.length > 0 ? (
               <ul className="sg-muted" style={{ fontSize: 12.5 }}>

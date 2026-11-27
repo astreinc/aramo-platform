@@ -29,7 +29,13 @@ import {
   signerInputKind,
   signerClearRefusal,
   signerValueProblem,
+  SIGNER_CODE_COPY,
+  SIGNER_CODE_LOCKED,
+  signerCodeMethodOf,
+  signerCodeSendRefusal,
+  signerCodeVerifyRefusal,
   type ProfilePrefill,
+  type SignerCodeMethod,
 } from '@aramo/sign-client';
 
 import { stashInboxClaim } from '../inbox-claim-handoff';
@@ -233,7 +239,7 @@ function screenForError(e: unknown): Screen {
     // Feature-Parity §1.9 — the sender asked this recipient to verify their identity.
     if (e.code === 'SIGNER_IDENTITY_VERIFICATION_REQUIRED') return 'identity';
     if (e.code === 'SIGNER_IDENTITY_VERIFICATION_LOCKED') return 'idlocked';
-    // Feature-Parity §1.9 — the sender asked for a code sent by SMS before the document opens.
+    // Feature-Parity §1.9 — the sender asked for a code (SMS, or S3 email) before the document opens.
     if (e.reason === 'recipient_verification_required') return 'smscode';
     if (e.reason === 'recipient_verification_locked' || e.reason === 'otp_locked') return 'smslocked';
     if (e.code === 'NETWORK') return 'network';
@@ -824,44 +830,46 @@ function AccessCodeCard({ onSubmit }: { readonly onSubmit: (code: string) => Pro
 
 // Feature-Parity §1.9 — the recipient asks for a code by SMS and enters it before anything of
 // the document is shown. The code is checked by the server and never kept here.
+// SIGN-FREE-PARITY-1 S3 — the same card for a code sent to the signer's email; the server's
+// status names the code still due (SMS before email), and the copy says where it goes
+// (@aramo/sign-client SIGNER_CODE_COPY, shared with the app).
 function SmsCodeCard({ token, onVerified, onLocked }: { readonly token: string; readonly onVerified: () => void; readonly onLocked: () => void }) {
-  const [phone, setPhone] = useState<string | null>(null);
+  const [method, setMethod] = useState<SignerCodeMethod | null>(null);
+  const [destination, setDestination] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  useEffect(() => {
-    let live = true;
-    signApi
-      .smsCodeStatus(token)
-      .then((s) => {
-        if (live) setPhone(s.phone);
-      })
-      .catch(() => undefined);
-    return () => {
-      live = false;
-    };
+  const load = useCallback(async (): Promise<boolean> => {
+    try {
+      const s = await signApi.smsCodeStatus(token);
+      if (s.required && s.verified) return true;
+      const m = signerCodeMethodOf(s.method);
+      setMethod(m);
+      setDestination(m === 'EMAIL_OTP' ? (s.email ?? null) : s.phone);
+    } catch {
+      setMethod((m) => m ?? 'SMS_OTP');
+    }
+    return false;
   }, [token]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  if (method === null) return <main className="sg-center" aria-busy="true" />;
+  const copy = SIGNER_CODE_COPY[method];
   const send = async () => {
     setBusy(true);
     setMessage(null);
     try {
-      const r = await signApi.smsCodeSend(token);
+      const r = await signApi.signerCodeSend(token, method);
       if (r.verified) return onVerified();
       setSent(true);
-      if (r.phone !== null) setPhone(r.phone);
+      const to = method === 'EMAIL_OTP' ? r.email : r.phone;
+      if (typeof to === 'string') setDestination(to);
     } catch (e) {
       const reason = e instanceof SignApiError ? e.reason : undefined;
       if (reason === 'otp_locked') return onLocked();
-      setMessage(
-        reason === 'otp_resend_cooldown'
-          ? 'Wait a minute before asking for another code.'
-          : reason === 'otp_daily_limit'
-            ? 'You have asked for too many codes today. Try again tomorrow, or contact the sender.'
-            : reason === 'otp_opted_out'
-              ? 'This number has stopped text messages from Aramo Sign. Contact the sender.'
-              : "The code couldn't be sent. Try again in a moment.",
-      );
+      setMessage(signerCodeSendRefusal(reason));
     } finally {
       setBusy(false);
     }
@@ -870,37 +878,31 @@ function SmsCodeCard({ token, onVerified, onLocked }: { readonly token: string; 
     setBusy(true);
     setMessage(null);
     try {
-      await signApi.smsCodeVerify(token, code.trim());
+      await signApi.signerCodeVerify(token, method, code.trim());
+      // A signer asked for both codes enters the next one (the server names it).
+      if (method === 'SMS_OTP' && !(await load())) {
+        setSent(false);
+        setCode('');
+        return;
+      }
       onVerified();
     } catch (e) {
       const reason = e instanceof SignApiError ? e.reason : undefined;
       if (reason === 'otp_locked') return onLocked();
-      setMessage(
-        reason === 'otp_mismatch'
-          ? "That code isn't right. Check it and try again."
-          : reason === 'otp_expired'
-            ? 'This code has expired. Send a new one.'
-            : reason === 'otp_code_locked'
-              ? 'Too many incorrect codes. Send a new code.'
-              : reason === 'otp_not_requested'
-                ? 'Send a code first.'
-                : "That didn't go through. Try again.",
-      );
+      setMessage(signerCodeVerifyRefusal(reason));
     } finally {
       setBusy(false);
     }
   };
   return (
     <main className="sg-center">
-      <div className="sg-card" data-testid="sg-sms-code">
-        <h1>Enter the code we text you</h1>
-        <p className="sg-muted">
-          The sender asked us to confirm your phone before you open this document. We&apos;ll text a code to {phone ?? 'your phone'}.
-        </p>
+      <div className="sg-card" data-testid={method === 'EMAIL_OTP' ? 'sg-email-code' : 'sg-sms-code'}>
+        <h1>{copy.title}</h1>
+        <p className="sg-muted">{sent ? copy.sentBody(destination) : copy.body(destination)}</p>
         {sent ? (
           <label className="sg-label">
-            Code
-            <TextIn value={code} onChange={(e) => setCode(e.target.value)} aria-label="Code" autoComplete="one-time-code" inputMode="numeric" />
+            {copy.codeLabel}
+            <TextIn value={code} onChange={(e) => setCode(e.target.value)} aria-label={copy.codeLabel} autoComplete="one-time-code" inputMode="numeric" />
           </label>
         ) : null}
         {message !== null ? (
@@ -911,15 +913,15 @@ function SmsCodeCard({ token, onVerified, onLocked }: { readonly token: string; 
         {sent ? (
           <>
             <Btn className="sg-btn--block" disabled={code.trim().length === 0 || busy} onClick={() => void verify()}>
-              Continue
+              {copy.continueLabel}
             </Btn>
             <Btn variant="quiet" className="sg-btn--block" disabled={busy} onClick={() => void send()}>
-              Send a new code
+              {copy.resendLabel}
             </Btn>
           </>
         ) : (
           <Btn className="sg-btn--block" disabled={busy} onClick={() => void send()}>
-            Text me a code
+            {copy.sendLabel}
           </Btn>
         )}
       </div>
@@ -1701,7 +1703,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
     return (
       <>
         <Header {...headerProps} />
-        <EndState tone="error" title="Too many incorrect codes" body="For your security this document is locked. Contact the sender if you still need to sign." />
+        <EndState tone="error" title={SIGNER_CODE_LOCKED.title} body={SIGNER_CODE_LOCKED.body} />
       </>
     );
   if (screen === 'delegated')

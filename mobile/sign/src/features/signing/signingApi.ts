@@ -5,11 +5,17 @@
 // postRaw() with its body and response typed from the generated operation.
 import {
   DELEGATE_REASON_MAX,
+  SIGNER_CODE_COPY,
+  SIGNER_CODE_LOCKED,
   incompleteReasonMessage,
   isFieldValueRefusalReason,
   isValidDelegate,
+  signerCodeMethodOf,
+  signerCodeSendRefusal,
+  signerCodeVerifyRefusal,
   type DelegateInput,
   type ProfilePrefill,
+  type SignerCodeMethod,
 } from '@aramo/sign-client';
 
 import { isApiError } from '../../api/errors';
@@ -167,32 +173,31 @@ export async function submitAccessCode(
 
 // UAT SEC-04 follow-up — the SMS code (Feature-Parity §1.9), the same routes and copy as
 // the web signer page. The server sends, checks and counts the code; nothing is kept here.
+// SIGN-FREE-PARITY-1 S3 — the same step for a code sent to the signer's email. The copy,
+// routes and refusal words are @aramo/sign-client's (shared with the web signer page).
 export const SMS_CODE_COPY = {
-  title: 'Enter the code we text you',
-  body: (phone: string | null) =>
-    `The sender asked us to confirm your phone before you open this document. We’ll text a code to ${phone ?? 'your phone'}.`,
-  lockedTitle: 'Too many incorrect codes',
-  lockedBody:
-    'For your security this document is locked. Contact the sender if you still need to sign.',
+  title: SIGNER_CODE_COPY.SMS_OTP.title,
+  body: SIGNER_CODE_COPY.SMS_OTP.body,
+  lockedTitle: SIGNER_CODE_LOCKED.title,
+  lockedBody: SIGNER_CODE_LOCKED.body,
 } as const;
 
-const SMS_SEND_REFUSALS: Record<string, string> = {
-  otp_resend_cooldown: 'Wait a minute before asking for another code.',
-  otp_daily_limit:
-    'You have asked for too many codes today. Try again tomorrow, or contact the sender.',
-  otp_opted_out: 'This number has stopped text messages from Aramo Sign. Contact the sender.',
-};
-const SMS_VERIFY_REFUSALS: Record<string, string> = {
-  otp_mismatch: 'That code isn’t right. Check it and try again.',
-  otp_expired: 'This code has expired. Send a new one.',
-  otp_code_locked: 'Too many incorrect codes. Send a new code.',
-  otp_not_requested: 'Send a code first.',
-};
+/** The per-method words of the code step (SMS or email), from @aramo/sign-client. */
+export const SIGNER_STEP_COPY = SIGNER_CODE_COPY;
+export type { SignerCodeMethod };
 
-/** The masked phone the code goes to (null when not known). */
-export async function smsCodePhone(session: GuestSigningSession): Promise<string | null> {
+/** The code still due (the server names it: SMS before email) and where it goes. */
+export interface SignerCodeState {
+  readonly method: SignerCodeMethod;
+  readonly destination: string | null;
+  readonly verified: boolean;
+}
+
+export async function signerCodeStatus(session: GuestSigningSession): Promise<SignerCodeState> {
   const r = await session.post('/v1/sign/signing/verification', {});
-  return typeof r.phone === 'string' ? r.phone : null;
+  const method = signerCodeMethodOf(r.method);
+  const to = method === 'EMAIL_OTP' ? r.email : r.phone;
+  return { method, destination: typeof to === 'string' ? to : null, verified: r.required === true && r.verified === true };
 }
 
 export type SmsOutcome =
@@ -201,28 +206,49 @@ export type SmsOutcome =
   | { kind: 'locked' }
   | { kind: 'message'; text: string };
 
-export async function sendSmsCode(session: GuestSigningSession): Promise<SmsOutcome> {
+const CODE_ROUTES = {
+  SMS_OTP: {
+    send: '/v1/sign/signing/verification/sms-otp/send',
+    verify: '/v1/sign/signing/verification/sms-otp/verify',
+  },
+  EMAIL_OTP: {
+    send: '/v1/sign/signing/verification/email-otp/send',
+    verify: '/v1/sign/signing/verification/email-otp/verify',
+  },
+} as const;
+
+/** Send a code by SMS or email; `phone` of a sent outcome is the masked destination. */
+export async function sendSignerCode(
+  session: GuestSigningSession,
+  method: SignerCodeMethod,
+): Promise<SmsOutcome> {
   try {
-    const r = await session.post('/v1/sign/signing/verification/sms-otp/send', {});
+    const r: { verified: boolean; phone?: string; email?: string } = await session.post(
+      CODE_ROUTES[method].send,
+      {},
+    );
     if (r.verified === true) return { kind: 'verified' };
-    return { kind: 'sent', phone: typeof r.phone === 'string' ? r.phone : null };
+    const to = method === 'EMAIL_OTP' ? r.email : r.phone;
+    return { kind: 'sent', phone: typeof to === 'string' ? to : null };
   } catch (e) {
     if (isApiError(e) && e.reason === 'otp_locked') return { kind: 'locked' };
     if (isApiError(e) && e.isNetwork) return { kind: 'message', text: SIGNING_COPY.submitFailed };
-    const text = isApiError(e) ? SMS_SEND_REFUSALS[e.reason] : undefined;
-    return { kind: 'message', text: text ?? 'The code couldn’t be sent. Try again in a moment.' };
+    return { kind: 'message', text: signerCodeSendRefusal(isApiError(e) ? e.reason : undefined) };
   }
 }
 
-export async function verifySmsCode(session: GuestSigningSession, code: string): Promise<SmsOutcome> {
+export async function verifySignerCode(
+  session: GuestSigningSession,
+  method: SignerCodeMethod,
+  code: string,
+): Promise<SmsOutcome> {
   try {
-    await session.post('/v1/sign/signing/verification/sms-otp/verify', { code: code.trim() });
+    await session.post(CODE_ROUTES[method].verify, { code: code.trim() });
     return { kind: 'verified' };
   } catch (e) {
     if (isApiError(e) && e.reason === 'otp_locked') return { kind: 'locked' };
     if (isApiError(e) && e.isNetwork) return { kind: 'message', text: SIGNING_COPY.submitFailed };
-    const text = isApiError(e) ? SMS_VERIFY_REFUSALS[e.reason] : undefined;
-    return { kind: 'message', text: text ?? 'That didn’t go through. Try again.' };
+    return { kind: 'message', text: signerCodeVerifyRefusal(isApiError(e) ? e.reason : undefined) };
   }
 }
 

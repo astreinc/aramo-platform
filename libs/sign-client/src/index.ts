@@ -306,6 +306,17 @@ export {
   type RefusalInput,
   type RefusalFormat,
 } from './lib/refusal-messages.js';
+// SIGN-FREE-PARITY-1 S2 — the sender's own phone step-up (copy + code rule, web and app).
+export {
+  PHONE_STEP_UP_REASON,
+  STEP_UP_CODE_LENGTH,
+  PHONE_STEP_UP_COPY,
+  PHONE_STEP_UP_REFUSAL_COPY,
+  offersPhoneStepUp,
+  normalizeStepUpCode,
+  isStepUpCode,
+  type PhoneStepUpStatus,
+} from './lib/phone-step-up.js';
 export {
   recipientKindOf,
   isWitness,
@@ -369,4 +380,59 @@ export { optionalMark, withOptionalMark, optionalSuffix } from './lib/optional-m
 // One rule for an envelope's email subject ("Please sign: …") on web, the app and the emails.
 export { SIGN_SUBJECT_PREFIX, subjectDocumentTitle, signatureRequestSubject } from './lib/envelope-subject.js';
 // UAT SND-14 — who a reminder reaches now and when the next one can go (web and the app).
-export { remindableNow, nextReminderAt, type ReminderRow } from './lib/reminders.js';
+export {
+  remindableNow,
+  nextReminderAt,
+  // SIGN-FREE-PARITY-1 S4 — automatic reminders: the one cadence (server and both apps) and copy.
+  AUTO_REMINDER_DAY_MS,
+  AUTO_REMINDER_CADENCE,
+  AUTO_REMINDER_SETTABLE_STATUSES,
+  AUTO_REMINDER_COPY,
+  canSetAutoReminders,
+  autoReminderDueAt,
+  autoReminderAfterSent,
+  autoReminderOnEnable,
+  autoReminderStatusLine,
+  type ReminderRow,
+  type AutoRemindersView,
+} from './lib/reminders.js';
+// SIGN-FREE-PARITY-1 S7 — a user's own folders (name rule, cap and copy; web and the app).
+export {
+  FOLDER_NAME_MAX,
+  FOLDERS_PER_USER_MAX,
+  DELETED_FOLDER,
+  FOLDER_COPY,
+  normalizeFolderName,
+  folderNameRefusal,
+  canCreateFolder,
+  isUserFolderId,
+  type FolderNameRefusal,
+  type FolderCopyKey,
+} from './lib/folders.js';
+// SIGN-FREE-PARITY-1 S3 — the signer's one-time code (SMS or email): copy, routes, refusals.
+export {
+  EMAIL_CODE_OPTION,
+  SIGNER_CODE_COPY,
+  SIGNER_CODE_LOCKED,
+  SIGNER_CODE_ROUTE,
+  signerCodeMethodOf,
+  signerCodeSendRefusal,
+  signerCodeVerifyRefusal,
+  type SignerCodeCopy,
+  type SignerCodeMethod,
+} from './lib/signer-code.js';
+// SIGN-FREE-PARITY-1 S6 — cloud storage import and export (providers, names, copy).
+export {
+  CLOUD_PROVIDERS,
+  CLOUD_PROVIDER_LABELS,
+  CLOUD_PROVIDER_FEATURE_KEYS,
+  CLOUD_EXPORT_FOLDER,
+  CLOUD_STORAGE_COPY,
+  CLOUD_STORAGE_REFUSAL_COPY,
+  isCloudProvider,
+  cloudProvidersOf,
+  cloudConnectResultOf,
+  signedCopyName,
+  type CloudProviderId,
+  type CloudConnectResult,
+} from './lib/cloud-storage.js';

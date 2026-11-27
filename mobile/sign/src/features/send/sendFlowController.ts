@@ -309,6 +309,11 @@ export class SendFlowController {
     this.messagingEnabled = on;
   }
 
+  /** SIGN-FREE-PARITY-1 S2 — the phone step-up was cleared: the last refusal no longer applies. */
+  clearRefusal(): void {
+    this.set({ refusal: null, error: null });
+  }
+
   dismissNotice(): void {
     this.set({ notice: null });
   }
@@ -750,6 +755,11 @@ export class SendFlowController {
     this.update((q) => ({ ...q, allowDelegation: on }), { meta: true });
   }
 
+  /** SIGN-FREE-PARITY-1 S4 — automatic reminders for this envelope (default on). */
+  setAutoReminders(on: boolean): void {
+    this.update((q) => ({ ...q, autoRemindersEnabled: on }), { meta: true });
+  }
+
   /**
    * Feature-Parity §1.9 — set (a code) or remove (null) a recipient's access code. Kept
    * only until the recipients are saved; the code is never logged. False when refused.
@@ -774,6 +784,11 @@ export class SendFlowController {
       (r) => (takesLinkChecks(r) ? { ...r, identityCheck: check, identityDirty: true } : null),
       { recipients: true },
     );
+  }
+
+  /** SIGN-FREE-PARITY-1 S3 — ask for a code sent to their email before signing (link signers). */
+  setEmailCode(key: string, on: boolean): void {
+    this.patchRecipient(key, (r) => (takesLinkChecks(r) ? { ...r, emailOtp: on } : null), { recipients: true });
   }
 
   /** Feature-Parity §1.7–§1.9 — text delivery, the SMS code and the phone (SIGNER only). */

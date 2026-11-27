@@ -21,6 +21,8 @@ export interface ListRowProps {
   readonly accessory?: ReactNode;
   readonly trailing?: string;
   readonly onPress?: () => void;
+  /** SIGN-FREE-PARITY-1 S7 — e.g. "Move to folder" on an Agreements row. */
+  readonly onLongPress?: () => void;
   readonly showSeparator?: boolean;
   readonly accessibilityLabel?: string;
   /** VoiceOver / TalkBack custom actions (e.g. the row's swipe actions). */
@@ -70,6 +72,7 @@ export function ListRow({
   accessory,
   trailing,
   onPress,
+  onLongPress,
   showSeparator = true,
   accessibilityLabel,
   accessibilityActions,
@@ -79,6 +82,7 @@ export function ListRow({
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={onLongPress}
       disabled={!onPress}
       accessibilityRole={onPress ? 'button' : undefined}
       accessibilityLabel={accessibilityLabel}

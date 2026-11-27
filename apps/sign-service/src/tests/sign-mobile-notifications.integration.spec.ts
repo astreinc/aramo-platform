@@ -316,7 +316,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign mobile — n
 
   it('account close purges the user’s convenience data (devices, feed, preferences) with a counts-only audit; another user is untouched', async () => {
     const counts = await module.get(ConvenienceDataPurgeService).purgeForAccountClose({ tenant_id: TENANT_A, user_id: SAM });
-    expect(counts).toEqual({ devices_revoked: 0, push_jobs_cancelled: 0, devices_deleted: 1, notifications_deleted: 2, preferences_deleted: 1 });
+    expect(counts).toEqual({ devices_revoked: 0, push_jobs_cancelled: 0, devices_deleted: 1, notifications_deleted: 2, preferences_deleted: 1, cloud_connections_deleted: 0 });
     expect((await http().get('/v1/sign/me/notifications').set('Authorization', await as(SAM, TENANT_A))).body.items).toEqual([]);
     expect((await http().get('/v1/sign/me/notifications').set('Authorization', await as(BOB, TENANT_B))).body.items).toHaveLength(2);
     const audit = (await db.query(`SELECT tenant_id, user_id, reason, devices_deleted, notifications_deleted, preferences_deleted FROM "sign"."SignConvenienceDataPurge"`)).rows;
@@ -324,6 +324,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign mobile — n
     // Signing evidence is untouched.
     expect((await db.query(`SELECT count(*)::int AS n FROM "sign"."SignatureEvent" WHERE envelope_id = $1`, [ENVELOPE])).rows[0].n).toBeGreaterThan(0);
     // Idempotent: a repeat finds nothing.
-    expect(await module.get(ConvenienceDataPurgeService).purgeForAccountClose({ tenant_id: TENANT_A, user_id: SAM })).toEqual({ devices_revoked: 0, push_jobs_cancelled: 0, devices_deleted: 0, notifications_deleted: 0, preferences_deleted: 0 });
+    expect(await module.get(ConvenienceDataPurgeService).purgeForAccountClose({ tenant_id: TENANT_A, user_id: SAM })).toEqual({ devices_revoked: 0, push_jobs_cancelled: 0, devices_deleted: 0, notifications_deleted: 0, preferences_deleted: 0, cloud_connections_deleted: 0 });
   });
 });

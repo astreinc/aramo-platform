@@ -32,6 +32,16 @@ export const MESSAGING_LEDGER_EVENT_TYPES: readonly string[] = [
 
 /** The recipient authentication method this module implements (§1.9). */
 export const SMS_OTP_METHOD = 'SMS_OTP';
+/** SIGN-FREE-PARITY-1 S3 — a one-time code sent to the recipient's email (all plans). */
+export const EMAIL_OTP_METHOD = 'EMAIL_OTP';
+export type RecipientOtpMethod = typeof SMS_OTP_METHOD | typeof EMAIL_OTP_METHOD;
+
+/** "jane@example.com" → "j***@example.com". Shown to the signer, in the ledger and on the certificate. */
+export function maskOtpEmail(email: string): string {
+  const at = email.indexOf('@');
+  if (at <= 0) return '***';
+  return `${email[0]}***${email.slice(at)}`;
+}
 
 // ── Phone numbers ────────────────────────────────────────────────────────────
 // Client Rule Consolidation §5 / audit row 24 — the ONE E.164 pattern lives in @aramo/sign-client.

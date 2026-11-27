@@ -586,6 +586,34 @@ server {
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
   }
 
+  # SIGN-FREE-PARITY-1 S8 — installable web app. The service worker and the manifest
+  # are EXACT locations, never the SPA fallback (a missing file is a 404, so the browser
+  # never takes index.html for a worker script), and are always revalidated so a new
+  # worker reaches every browser on the next visit. A location that sets add_header
+  # inherits none of the server-level headers, so each repeats the workspace set.
+  location = /sw.js {
+    root /srv/sign;
+    try_files /sw.js =404;
+    add_header Cache-Control "no-cache" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; frame-src 'self' blob: https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+  }
+  location = /manifest.webmanifest {
+    root /srv/sign;
+    try_files /manifest.webmanifest =404;
+    add_header Cache-Control "no-cache" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; frame-src 'self' blob: https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+  }
+
   location / {
     root /srv/sign;
     try_files $uri /index.html;

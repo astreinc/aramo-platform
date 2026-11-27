@@ -26,6 +26,7 @@ import {
   QES_SIGNING_PORT,
   ESTAMP_PORT,
   SignNotificationRepository,
+  SignCloudStorageRepository,
   SignPrivacyRepository,
   SignArtifactCustodyRepository,
   SignPurgeRepository,
@@ -72,6 +73,8 @@ import { eventPublisherFromEnv } from './sns-event-publisher.js';
 import { HttpWebhookEventPublisher } from './webhook-event-publisher.js';
 import { EsignDeliveryWorker } from './esign-delivery.worker.js';
 import { EsignExpiryWorker } from './esign-expiry.worker.js';
+// SIGN-FREE-PARITY-1 S4 — automatic reminders (default off: SIGN_AUTO_REMINDER_WORKER_ENABLED=1).
+import { EsignAutoReminderWorker } from './esign-auto-reminder.worker.js';
 import { SigningInvitationWorker } from './signing-invitation.worker.js';
 // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.18 — RFC 3161 trusted timestamps
 // (dark: SIGN_TSA_URL unset or sign.trusted_timestamp NOT_AVAILABLE ⇒ no adapter, no worker).
@@ -98,6 +101,8 @@ import { TenantMembershipAdapter } from './billing/tenant-membership.adapter.js'
 import { IntegrationAdminController } from './integrations/integration-admin.controller.js';
 import { RecipientInboxController } from './inbox/recipient-inbox.controller.js';
 import { RecipientInboxService } from './inbox/recipient-inbox.service.js';
+import { SignFoldersController } from './folders/sign-folders.controller.js';
+import { SignFoldersService } from './folders/sign-folders.service.js';
 import { IntegrationAdminService } from './integrations/integration-admin.service.js';
 import { SignApiController, SignOAuthController } from './integrations/sign-api.controller.js';
 import { SignTalentErasureController, SignTalentErasureService } from './privacy/sign-talent-erasure.controller.js';
@@ -111,6 +116,9 @@ import { DOCUMENT_TEMPLATE_STUDIO_PORT, DocumentTemplateStudioHttpAdapter } from
 import { EsignSenderTemplateStudioController } from './sender/esign-sender-template-studio.controller.js';
 import { SenderTemplateStudioService } from './sender/sender-template-studio.service.js';
 import { SignFeatureGate } from './sign-feature.gate.js';
+// SIGN-FREE-PARITY-1 S6 — cloud storage import and export (dark per provider).
+import { SignCloudStorageController } from './cloud-storage/cloud-storage.controller.js';
+import { CloudStorageService } from './cloud-storage/cloud-storage.service.js';
 import { EsignSenderTemplatesController } from './sender/esign-sender-templates.controller.js';
 import { qesSigningAdapterFromEnv } from './regulated/csc-qes-signing.adapter.js';
 import { estampAdapterFromEnv } from './regulated/estamp-adapter.js';
@@ -121,6 +129,8 @@ import { SenderTemplatesService } from './sender/sender-templates.service.js';
 import { EsignSenderReportsController } from './sender/esign-sender-reports.controller.js';
 import { SenderReportsService } from './sender/sender-reports.service.js';
 import { PersonalSendGate } from './personal/personal-send.gate.js';
+import { SenderPhoneStepUpController } from './personal/sender-phone-step-up.controller.js';
+import { SenderPhoneStepUpService } from './personal/sender-phone-step-up.service.js';
 import { SignReportController } from './personal/sign-report.controller.js';
 import { ReportBudget, SignReportService } from './personal/sign-report.service.js';
 import { SignLegalController } from './legal/sign-legal.controller.js';
@@ -179,6 +189,7 @@ import { outboundMessagingFromEnv } from './messaging/messaging-adapters.js';
 import { SignMessagingService } from './messaging/sign-messaging.service.js';
 import { RecipientOtpService } from './messaging/recipient-otp.service.js';
 import { SenderMessagingService } from './messaging/sender-messaging.service.js';
+import { SignWhatsappPlanGate } from './messaging/whatsapp-plan.gate.js';
 import { SignRecipientVerificationController, SignSenderMessagingController, SignSmsInboundWebhookController, SignWhatsAppWebhookController } from './messaging/sign-messaging.controller.js';
 // Aramo Sign 1.14 — payment collection through Stripe Connect (dark until enabled).
 import { SignPaymentService } from './payments/sign-payment.service.js';
@@ -234,7 +245,7 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
       // (an AppModule provider) @Optional-injects it, and while it was unexported the
       // notifier resolved to undefined — envelopes went SENT but the signer
       // invitation email was silently never sent (prod RTR, 2026-10-16).
-      extraExports: [DOCUMENT_SOURCE_PROVIDER_PORT, SIGNING_NOTIFICATION_PORT, DOCUMENT_STORAGE_PORT, ENVELOPE_NOTIFICATION_SERVICE, SignPurgeRepository, SignPurgeService, SignBrandingRepository, SignBrandingService, SignMessagingRepository, SignMessagingService, SIGNER_LINK_MESSAGING_PORT, IdentityVerificationService],
+      extraExports: [DOCUMENT_SOURCE_PROVIDER_PORT, SIGNING_NOTIFICATION_PORT, DOCUMENT_STORAGE_PORT, ENVELOPE_NOTIFICATION_SERVICE, SignPurgeRepository, SignPurgeService, SignBrandingRepository, SignBrandingService, SignMessagingRepository, SignMessagingService, SIGNER_LINK_MESSAGING_PORT, IdentityVerificationService, OUTBOUND_MESSAGING_PORT],
       evidenceSigner: {
         provide: EVIDENCE_MANIFEST_SIGNER_PORT,
         // SX-1 item 4 — production refuses to boot without an asymmetric KMS
@@ -328,14 +339,19 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignSenderTemplateStudioController, EsignSenderReportsController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeSigningStatsController, SignMeNotificationsController, SignAppleRevokeController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignSmsInboundWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController, EsignSenderRegulatedController, EsignSignerQesController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignSenderTemplateStudioController, EsignSenderReportsController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignFoldersController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeSigningStatsController, SignMeNotificationsController, SignAppleRevokeController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignSmsInboundWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController, EsignSenderRegulatedController, EsignSignerQesController, SenderPhoneStepUpController, SignCloudStorageController],
   providers: [
     NativeAramoSignatureProvider,
+    // SIGN-FREE-PARITY-1 S4 — the automatic reminder sweep (needs the provider's dispatch). Off by default.
+    EsignAutoReminderWorker,
     AramoSignAllowanceGate,
     // India Billing Regions + Razorpay §4.4 — the routing country, also read by the billing controller.
     BillingCountryAdapter,
     SenderContextService,
     SenderEnvelopeService,
+    // SIGN-FREE-PARITY-1 S6 — connected cloud storage (tokens encrypted under SIGN_CLOUD_TOKEN_KEY).
+    SignCloudStorageRepository,
+    CloudStorageService,
     // M-A13 R-4 — Word to PDF conversion (dark unless SIGN_WORD_CONVERSION_ENABLED=1 + SIGN_WORD_CONVERTER_URL).
     { provide: WORD_CONVERSION_PORT, useFactory: () => wordConverterFromEnv(process.env) },
     EsignOwnerActivationService,
@@ -354,6 +370,7 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
     IntegrationAdminService,
     // Sign Unified Product S-7 — the recipient inbox.
     RecipientInboxService,
+    SignFoldersService,
     // DOC-TEMPLATE-LIB-1 T-5 — start an envelope from a Documents template.
     SignFeatureGate,
     // Feature-Parity §1.16 / §1.19 (Amendment A1) — QES and India e-stamp (dark).
@@ -365,11 +382,16 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
     // Aramo Sign Feature-Parity §1.21 — custom roles: launch availability + plan entitlement gate.
     SignCustomRolesGate,
     { provide: SIGN_PLAN_FEATURE_READER, useClass: SubscriptionPlanFeatureReader },
+    // SIGN-FREE-PARITY-1 S5 — WhatsApp is a per-plan feature.
+    SignWhatsappPlanGate,
     // Feature-Parity §1.13 — organization reports (dark behind sign.reports).
     SenderReportsService,
     // Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED — the Personal sending
     // gate (inert while SIGN_PERSONAL_SIGNUP_MODE is off) and "Report this email".
     PersonalSendGate,
+    // SIGN-FREE-PARITY-1 S2 — the sender's own SMS step-up code (v1/sign/personal/step-up),
+    // dark unless SIGN_SENDER_PHONE_STEP_UP=1; it texts through OUTBOUND_MESSAGING_PORT.
+    SenderPhoneStepUpService,
     ReportBudget,
     SignReportService,
     // Aramo Sign Personal (Free) — the Personal legal documents still to accept

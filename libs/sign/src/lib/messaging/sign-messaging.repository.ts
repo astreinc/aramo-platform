@@ -7,6 +7,8 @@ import { EsignRepository, type LockingTx } from '../esign.repository.js';
 import { isTerminalEnvelopeStatus } from '../domain/envelope-lifecycle.js';
 import type { MessagePurpose, MessagingChannel } from '../ports/outbound-messaging.port.js';
 
+import { SMS_OTP_METHOD, type RecipientOtpMethod } from './messaging-rules.js';
+
 // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.7 / §1.8 / §1.9 — persistence
 // for Sign messaging: the sender's per-recipient choice, the delivery records, the opt-out
 // list and the SMS one-time-code challenges. Ledger events go through
@@ -215,47 +217,66 @@ export class SignMessagingRepository {
     });
   }
 
-  // ── SMS one-time codes ────────────────────────────────────────────────────
-  async otpHistory(tenant_id: string, signer_id: string, since: Date) {
+  // ── One-time codes (SMS, and SIGN-FREE-PARITY-1 S3 email) ─────────────────
+  // Every read is scoped by method: the SMS code and the email code are separate
+  // challenges with separate limits, and a recipient who must enter both is verified
+  // only when the session holds a VERIFIED challenge of each.
+  async otpHistory(tenant_id: string, signer_id: string, since: Date, method: RecipientOtpMethod = SMS_OTP_METHOD) {
     return this.prisma.signRecipientOtpChallenge.findMany({
-      where: { tenant_id, signer_id, created_at: { gte: since } },
+      where: { tenant_id, signer_id, method, created_at: { gte: since } },
       orderBy: { created_at: 'desc' },
       select: { id: true, status: true, created_at: true },
     });
   }
 
-  async lockedChallengeCount(tenant_id: string, envelope_id: string, signer_id: string): Promise<number> {
-    return this.prisma.signRecipientOtpChallenge.count({ where: { tenant_id, envelope_id, signer_id, status: 'LOCKED' } });
+  async lockedChallengeCount(tenant_id: string, envelope_id: string, signer_id: string, method: RecipientOtpMethod = SMS_OTP_METHOD): Promise<number> {
+    return this.prisma.signRecipientOtpChallenge.count({ where: { tenant_id, envelope_id, signer_id, method, status: 'LOCKED' } });
   }
 
-  async activeChallenge(tenant_id: string, session_id: string) {
+  async activeChallenge(tenant_id: string, session_id: string, method: RecipientOtpMethod = SMS_OTP_METHOD) {
     return this.prisma.signRecipientOtpChallenge.findFirst({
-      where: { tenant_id, session_id, status: 'ACTIVE' },
+      where: { tenant_id, session_id, method, status: 'ACTIVE' },
       orderBy: { created_at: 'desc' },
     });
   }
 
-  async isSessionVerified(tenant_id: string, session_id: string): Promise<boolean> {
-    const n = await this.prisma.signRecipientOtpChallenge.count({ where: { tenant_id, session_id, status: 'VERIFIED' } });
+  async isSessionVerified(tenant_id: string, session_id: string, method: RecipientOtpMethod = SMS_OTP_METHOD): Promise<boolean> {
+    const n = await this.prisma.signRecipientOtpChallenge.count({ where: { tenant_id, session_id, method, status: 'VERIFIED' } });
     return n > 0;
   }
 
-  /** A new code for the session: earlier ACTIVE codes of this signer are SUPERSEDED. */
+  /** SIGN-FREE-PARITY-1 S3 — whether the sender asked for an email code, and where it goes. */
+  async emailOtpSetting(
+    tenant_id: string,
+    signer_id: string,
+  ): Promise<{ envelope_id: string; name: string; email: string | null; email_otp_required: boolean; envelope_subject: string } | null> {
+    const row = await this.prisma.signer.findFirst({
+      where: { tenant_id, id: signer_id },
+      select: { envelope_id: true, name: true, email: true, email_otp_required: true, envelope: { select: { subject: true } } },
+    });
+    if (row === null) return null;
+    return { envelope_id: row.envelope_id, name: row.name, email: row.email, email_otp_required: row.email_otp_required, envelope_subject: row.envelope.subject };
+  }
+
+  /** A new code for the session: earlier ACTIVE codes of this signer and method are SUPERSEDED. */
   async createChallenge(input: {
     id: string;
     tenant_id: string;
     envelope_id: string;
     signer_id: string;
     session_id: string;
-    phone_hash: string;
-    phone_masked: string;
+    method?: RecipientOtpMethod;
+    phone_hash?: string | null;
+    phone_masked?: string | null;
+    email_masked?: string | null;
     code_hash: string;
     expires_at: Date;
     now: Date;
   }): Promise<void> {
+    const method = input.method ?? SMS_OTP_METHOD;
     await this.prisma.$transaction(async (tx) => {
       await tx.signRecipientOtpChallenge.updateMany({
-        where: { tenant_id: input.tenant_id, signer_id: input.signer_id, status: 'ACTIVE' },
+        where: { tenant_id: input.tenant_id, signer_id: input.signer_id, method, status: 'ACTIVE' },
         data: { status: 'SUPERSEDED' },
       });
       await tx.signRecipientOtpChallenge.create({
@@ -265,8 +286,10 @@ export class SignMessagingRepository {
           envelope_id: input.envelope_id,
           signer_id: input.signer_id,
           session_id: input.session_id,
-          phone_hash: input.phone_hash,
-          phone_masked: input.phone_masked,
+          method,
+          phone_hash: input.phone_hash ?? null,
+          phone_masked: input.phone_masked ?? null,
+          email_masked: input.email_masked ?? null,
           code_hash: input.code_hash,
           expires_at: input.expires_at,
           created_at: input.now,
@@ -275,7 +298,7 @@ export class SignMessagingRepository {
     });
   }
 
-  /** Withdraw a code that could not be delivered (never left ACTIVE without an SMS). */
+  /** Withdraw a code that could not be delivered (never left ACTIVE without a message). */
   async withdrawChallenge(id: string): Promise<void> {
     await this.prisma.signRecipientOtpChallenge.updateMany({ where: { id, status: 'ACTIVE' }, data: { status: 'SUPERSEDED' } });
   }
