@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 
 import { PactV4, MatchersV3 } from '@pact-foundation/pact';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, PDFName, PDFString } from 'pdf-lib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const { like, uuid, integer, eachLike, regex, boolean, fromProviderState } = MatchersV3;
@@ -115,6 +115,8 @@ const USER_ID = 'e5000000-0000-7000-8000-000000000002';
 const LIST_ENVELOPE_ID = 'e5000000-0000-7000-8000-0000000000a1';
 // upload
 const UPLOAD_ENVELOPE_ID = 'e5000000-0000-7000-8000-0000000000b1';
+// PDF-ATTACH-1 — its own draft envelope (an id no other interaction seeds).
+const ATTACH_ENVELOPE_ID = 'e5000000-0000-7000-8000-0000000000b3';
 // recipients
 const RECIPIENTS_ENVELOPE_ID = 'e5000000-0000-7000-8000-0000000000c1';
 // fields (document + recipient)
@@ -146,6 +148,17 @@ async function letterPdfBase64(): Promise<string> {
   pdf.addPage([612, 792]);
   const bytes = await pdf.save({ useObjectStreams: false });
   return Buffer.from(bytes).toString('base64');
+}
+
+// PDF-ATTACH-1 — a one-page PDF carrying an attached file (a Content Credentials manifest).
+async function attachedPdfBase64(): Promise<string> {
+  const pdf = await PDFDocument.create({ updateMetadata: false });
+  pdf.addPage([612, 792]);
+  const stream = pdf.context.register(pdf.context.flateStream('{"c2pa":"manifest"}', { Type: 'EmbeddedFile', Subtype: 'application/c2pa' }));
+  const spec = pdf.context.register(pdf.context.obj({ Type: 'Filespec', F: PDFString.of('Content Credentials'), EF: { F: stream } }));
+  pdf.catalog.set(PDFName.of('Names'), pdf.context.obj({ EmbeddedFiles: { Names: [PDFString.of('Content Credentials'), spec] } }));
+  pdf.catalog.set(PDFName.of('AF'), pdf.context.obj([spec]));
+  return Buffer.from(await pdf.save({ useObjectStreams: false })).toString('base64');
 }
 
 // The EnvelopeDetail body (api.ts EnvelopeDetail), with the status pinned.
@@ -333,6 +346,38 @@ describe('esign-web → POST /v1/sign/sender/envelopes/{id}/documents', () => {
         const body = (await res.json()) as { page_count: number; pages: { width: number; height: number }[] };
         expect(body.page_count).toBe(1);
         expect(body.pages[0]).toEqual({ width: 612, height: 792 });
+      });
+  });
+});
+
+describe('esign-web → POST /v1/sign/sender/envelopes/{id}/documents (PDF-ATTACH-1)', () => {
+  it('a PDF with an attached file is accepted with the attachment removed, and says how many were removed', async () => {
+    const upload = { filename: 'incorporation.pdf', title: 'Incorporation', content_base64: await attachedPdfBase64() };
+    await provider
+      .addInteraction()
+      .given('a sender draft envelope exists', { envelope_id: ATTACH_ENVELOPE_ID })
+      .uponReceiving('a PDF upload with an attached file from the Aramo Sign console')
+      .withRequest('POST', `${BASE}/envelopes/${ATTACH_ENVELOPE_ID}/documents`, (b) => {
+        b.headers(JSON_HEADERS).jsonBody(upload);
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({
+          id: uuid('e5000000-0000-7000-8000-0000000000b4'),
+          title: 'Incorporation',
+          page_count: 1,
+          pages: [{ width: 612, height: 792 }],
+          attachments_removed: 1,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}${BASE}/envelopes/${ATTACH_ENVELOPE_ID}/documents`, {
+          method: 'POST',
+          headers: JSON_HEADERS,
+          body: JSON.stringify(upload),
+        });
+        expect(res.status).toBe(201);
+        const body = (await res.json()) as { attachments_removed?: number };
+        expect(body.attachments_removed).toBe(1);
       });
   });
 });

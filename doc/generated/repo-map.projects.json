@@ -970,6 +970,7 @@
       "coverPdfBoxes",
       "extractPageGraphics",
       "extractTextLayer",
+      "findPdfAttachment",
       "importPdfForm",
       "inlineFieldMaxWidth",
       "isFieldRun",
@@ -980,6 +981,7 @@
       "manifestProjection",
       "readPageFrames",
       "removeAndCoverTextTags",
+      "removePdfAttachments",
       "sanitizeWinAnsi",
       "stampTextInBox",
       "stampTextUnbounded",
@@ -2819,6 +2821,7 @@
       "PDF_PICKER_TYPES",
       "PDF_PROBLEM_COPY",
       "PDF_REFUSED_FALLBACK",
+      "PDF_SCRIPTS_WITH_IMPORT_COPY",
       "PENDING_SIGNER_STATUSES",
       "PHONE_HINT",
       "PHONE_STEP_UP_COPY",
@@ -2870,6 +2873,7 @@
       "allowanceTermsLine",
       "arrangedPlanLabel",
       "arrangedPurchaseRefusal",
+      "attachmentsRemovedNotice",
       "autoReminderAfterSent",
       "autoReminderDueAt",
       "autoReminderOnEnable",
@@ -3082,6 +3086,7 @@
       "PDF_FORM_FIELD_MAPPING",
       "PDF_PROBLEM_COPY",
       "PDF_REFUSED_FALLBACK",
+      "PDF_SCRIPTS_WITH_IMPORT_COPY",
       "PROFILE_TEXT_FIELD_TYPES",
       "RADIO_GROUP_RULE",
       "RETIRED_FIELD_TYPES",
@@ -3098,6 +3103,7 @@
       "UPLOAD_OPTION_COPY",
       "VALIDATIONS_BY_TYPE",
       "WHEN_PAYMENTS_AVAILABLE",
+      "attachmentsRemovedNotice",
       "checkboxGroupIssues",
       "conditionMetBy",
       "detectFields",
@@ -5392,6 +5398,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/m-a14-signing-stats.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/pdf-attach-1-upload.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -11059,6 +11071,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/field-parity-p2-upload-import.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/pdf-attach-1-upload.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

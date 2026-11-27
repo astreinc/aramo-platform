@@ -227,5 +227,7 @@ export {
   isFieldImportWarningCode,
   PDF_PROBLEM_COPY,
   PDF_REFUSED_FALLBACK,
+  PDF_SCRIPTS_WITH_IMPORT_COPY,
+  attachmentsRemovedNotice,
   pdfProblemText,
 } from './lib/field-import-copy.js';

@@ -22,8 +22,9 @@ import {
 // the PDF half of P2-5 (fillable-PDF import) and P2-6 (covering text tags, ruling R-5). The
 // catalog half (which form field becomes which catalog field; the tag syntax) is
 // @aramo/sign-fields field-import.ts. pdf-lib use in this lib is confined to the rendering
-// adapter, the safe-upload pipeline, THIS file (deliberately extended for P2-5 / P2-6) and
-// pdf-tag-text.ts (FIELD-PARITY-2 A-6: removing a tag's text, ruling C-8).
+// adapter, the safe-upload pipeline, THIS file (deliberately extended for P2-5 / P2-6),
+// pdf-tag-text.ts (FIELD-PARITY-2 A-6: removing a tag's text, ruling C-8) and pdf-attachments.ts
+// (PDF-ATTACH-1: removing attached files).
 //
 // importPdfForm — opt-in only (the hosts' `import_fields` flag). Nothing in the PDF is ever
 // executed: the file is parsed as data, never rendered or scripted.
@@ -32,8 +33,9 @@ import {
 //   2. Strip the form's active content: the whole /AcroForm (with /XFA, /CO calculation
 //      order, and every field's /A and /AA actions), the catalog's /AA, a JavaScript
 //      /OpenAction, the document JavaScript name tree (/Names /JavaScript) and each page's /AA.
-//      Anything else (a link's Launch action, embedded files, rich media, a non-JavaScript
-//      /OpenAction) is left in place for the existing safe-upload gates to refuse, as today.
+//      Anything else (a link's Launch action, rich media, a non-JavaScript /OpenAction) is left
+//      in place for the existing safe-upload gates to refuse, as today; attached files are
+//      removed by the gate's own step (PDF-ATTACH-1 acceptRemovingAttachments).
 //   3. Flatten: each visible widget's normal appearance is drawn into the page content as a
 //      form XObject (ISO 32000-1 §12.5.5 mapping of the appearance's BBox / Matrix onto the
 //      widget Rect); every widget annotation is removed.

@@ -5078,8 +5078,12 @@ paths:
       summary: Upload the official PDF of a fixed-form DRAFT (TEMPLATE-PRODUCT-1 §7.1).
       description: |
         JSON `{ content_base64 }`. PDF only, at most 10 MB, must parse, no active content (scripts,
-        launch / submit / import actions, embedded files, XFA — also inside compressed object streams).
+        launch / submit / import actions, XFA — also inside compressed object streams).
         Refused 422 `VALIDATION_ERROR` details.reason `pdf_too_large` / `pdf_unsafe` / `pdf_invalid`.
+        PDF-ATTACH-1 — attached files (embedded files, associated files, file-attachment annotations, a
+        portfolio) are removed, not refused: the stored PDF is the one without them and the response says
+        how many (`attachments_removed`). A digitally signed PDF with attached files is refused (`pdf_unsafe`,
+        details.pdf_problem `attachments`), since removing them would break its signature.
         Stored once as a PlatformTemplateAsset under the platform prefix of the documents bucket; the
         draft points at it and the preview gate re-arms. DRAFT only. Requires `platform:document_template:manage`.
 
@@ -7798,6 +7802,12 @@ components:
         field_import:
           $ref: '#/components/schemas/FixedFormFieldImport'
           description: FIELD-PARITY-1 P2-5 / P2-6 — present only on an upload sent with import_fields or apply_text_tags.
+        attachments_removed:
+          type: integer
+          minimum: 1
+          description: >-
+            PDF-ATTACH-1 ATT-6 — on the upload response only, and only when attached files (embedded files,
+            associated files, file-attachment annotations, a portfolio) were removed from the uploaded PDF.
     PlatformPrivacyRequest:
       type: object
       description: Aramo-Sign-Mobile-Amendment-M-A7 §3.1 — a privacy request in the operator queue (counts only).

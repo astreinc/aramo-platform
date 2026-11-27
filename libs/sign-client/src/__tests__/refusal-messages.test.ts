@@ -1,6 +1,6 @@
 // Client Rule Consolidation C3 — runs under vitest and mobile Jest (globals only).
 // Audit rows 8 and 29: one refusal → copy map; the server's text is never shown.
-import { ENVELOPE_CHANGED, FALLBACK_MESSAGE, NO_PERMISSION, PDF_PROBLEM_COPY, PDF_REFUSED_FALLBACK, REFUSAL_COPY, UPLOAD_OPTION_COPY, STORAGE_FULL, WORD_COPY, refusalMessage, type RefusalInput } from '../index.js';
+import { ENVELOPE_CHANGED, FALLBACK_MESSAGE, NO_PERMISSION, PDF_PROBLEM_COPY, PDF_REFUSED_FALLBACK, PDF_SCRIPTS_WITH_IMPORT_COPY, REFUSAL_COPY, UPLOAD_OPTION_COPY, STORAGE_FULL, WORD_COPY, attachmentsRemovedNotice, pdfProblemText, refusalMessage, type RefusalInput } from '../index.js';
 
 const fmt = { time: (iso: string) => `T(${iso})`, date: (iso: string) => `D(${iso})` };
 
@@ -73,11 +73,34 @@ describe('refused PDF copy (one classification, every UI)', () => {
     ['the template upload reasons too', { code: 'VALIDATION_ERROR', details: { reason: 'pdf_invalid', pdf_problem: 'damaged' } }, PDF_PROBLEM_COPY.damaged],
     ['an older server that does not say why', { code: 'VALIDATION_ERROR', reason: 'unsafe_pdf' }, PDF_REFUSED_FALLBACK],
     ['an unknown problem', { code: 'VALIDATION_ERROR', details: { reason: 'pdf_unsafe', pdf_problem: 'something_new' } }, PDF_REFUSED_FALLBACK],
+    // PDF-ATTACH-1 ATT-11 — attached files that could not be removed safely.
+    ['attachments', { code: 'VALIDATION_ERROR', details: { reason: 'unsafe_pdf', pdf_problem: 'attachments' } }, 'This PDF has attached files that can’t be removed safely. Print it to a new PDF and upload that copy.'],
   ])('%s', (_n, e, copy) => {
     expect(refusalMessage(e, fmt)).toBe(copy);
   });
 
-  it('points a scripted form at the import option, by its own label', () => {
-    expect(PDF_PROBLEM_COPY.scripts).toContain(UPLOAD_OPTION_COPY.import_fields.label);
+  // PDF-ATTACH-1 ATT-9 / ATT-10 — Sign web and the app have no import option (PO ruling
+  // 2026-11-25), so their wording never names it; the console's does, by its own label.
+  it('the scripts wording names the import option only where the surface offers it', () => {
+    expect(PDF_PROBLEM_COPY.scripts).toBe('This PDF has built-in scripts, which Aramo doesn’t accept. Print it to a new PDF and upload that copy.');
+    expect(PDF_PROBLEM_COPY.scripts).not.toContain(UPLOAD_OPTION_COPY.import_fields.label);
+    expect(refusalMessage({ code: 'VALIDATION_ERROR', details: { pdf_problem: 'scripts' } }, fmt)).not.toContain(UPLOAD_OPTION_COPY.import_fields.label);
+    expect(pdfProblemText('scripts', { importOption: true })).toBe(PDF_SCRIPTS_WITH_IMPORT_COPY);
+    expect(PDF_SCRIPTS_WITH_IMPORT_COPY).toContain(UPLOAD_OPTION_COPY.import_fields.label);
+    expect(pdfProblemText('attachments', { importOption: true })).toBe(PDF_PROBLEM_COPY.attachments);
+  });
+});
+
+describe('attached files removed notice (PDF-ATTACH-1 ATT-8)', () => {
+  it.each<[unknown, string | null]>([
+    [1, 'We removed 1 attached file from this PDF. Attached files can’t be signed, so they aren’t sent.'],
+    [3, 'We removed 3 attached files from this PDF. Attached files can’t be signed, so they aren’t sent.'],
+    [0, null],
+    [undefined, null],
+    [-1, null],
+    [1.5, null],
+    ['2', null],
+  ])('%j', (count, text) => {
+    expect(attachmentsRemovedNotice(count)).toBe(text);
   });
 });

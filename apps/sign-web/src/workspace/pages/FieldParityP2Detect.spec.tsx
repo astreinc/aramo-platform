@@ -96,6 +96,18 @@ describe('sign-web document step — no upload options when sending', () => {
     const body = calls.find((c) => c.method === 'POST' && c.url.endsWith('/documents'))!.body as Record<string, unknown>;
     expect(Object.keys(body).sort()).toEqual(['content_base64', 'filename', 'title']);
     expect(screen.queryByTestId('docs-import-result')).toBeNull();
+    expect(screen.queryByTestId('attachments-removed')).toBeNull();
+  });
+
+  // PDF-ATTACH-1 ATT-8 — the shared notice when the server removed the PDF's attached files.
+  it('says when the PDF’s attached files were removed (the shared words)', async () => {
+    const calls: Call[] = [];
+    stub(calls, { ...UPLOADED, attachments_removed: 1 });
+    show('/sign/envelopes/e1/edit?step=1');
+    const input = await screen.findByLabelText('Upload PDF documents');
+    fireEvent.change(input, { target: { files: [pdfFile()] } });
+    const notice = await screen.findByTestId('attachments-removed');
+    expect(notice.textContent).toContain('We removed 1 attached file from this PDF. Attached files can’t be signed, so they aren’t sent.');
   });
 
 });

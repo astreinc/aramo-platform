@@ -11,7 +11,7 @@
 //   - A 412 (revision_mismatch) reloads the envelope from the server, shows "This
 //     envelope changed elsewhere", and never overwrites it.
 //   - Send is an explicit user action, online only. Nothing is ever sent silently.
-import { fieldImportSummary, fieldImportWarningText } from '@aramo/sign-client';
+import { attachmentsRemovedNotice, fieldImportSummary, fieldImportWarningText } from '@aramo/sign-client';
 
 import { ApiError, isApiError } from '../../api/errors';
 import { WORD_COPY, refusalMessage } from '../../api/refusalMessages';
@@ -62,7 +62,7 @@ import {
   type AddCheck,
 } from './recipientRoles';
 import { isRevisionMismatch, type SenderApi, type Versioned } from './senderApi';
-import { syncDraft, SendFlowError, type SyncImport } from './syncDraft';
+import { syncDraft, SendFlowError, type SyncImport, type SyncRemovedAttachments } from './syncDraft';
 
 export const CHANGED_ELSEWHERE = 'This envelope changed elsewhere. Showing the latest version.';
 
@@ -892,8 +892,8 @@ export class SendFlowController {
         { ...d, step: this.state.step },
       );
       const { draft, server } = result;
-      const imported = importNotice(result.imports);
-      this.set({ draft, ...(server ? { server } : {}), ...(imported ? { notice: imported } : {}) });
+      const shown = [importNotice(result.imports), removedAttachmentsNotice(result.removedAttachments)].filter((n): n is string => n !== null);
+      this.set({ draft, ...(server ? { server } : {}), ...(shown.length > 0 ? { notice: shown.join('\n') } : {}) });
       return true;
     } catch (e) {
       this.lastSyncError = e;
@@ -1041,6 +1041,18 @@ function uploadFlags(o: UploadOptions): { importFields?: true; applyTextTags?: t
  * FIELD-PARITY-1 P2-5 / P2-6 — the result of each opted-in upload in plain language (the shared
  * copy): "Lease: 3 fields added · 1 warning", then each warning. Null when nothing was opted in.
  */
+/**
+ * PDF-ATTACH-1 ATT-8 — the shared notice for each upload whose attached files the server removed:
+ * "Lease: We removed 1 attached file from this PDF. …". Null when none were.
+ */
+export function removedAttachmentsNotice(removed: readonly SyncRemovedAttachments[] | undefined): string | null {
+  const lines = (removed ?? []).flatMap((r) => {
+    const text = attachmentsRemovedNotice(r.count);
+    return text === null ? [] : [`${r.title}: ${text}`];
+  });
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
 export function importNotice(imports: readonly SyncImport[]): string | null {
   if (imports.length === 0) return null;
   return imports

@@ -148,4 +148,15 @@ describe('FIELD-PARITY-1 P2-5 / P2-6 — upload options in the console Studio', 
     await waitFor(() => expect(ds.uploadPdf).toHaveBeenCalled());
     expect((ds.uploadPdf as ReturnType<typeof vi.fn>).mock.calls[0]![2]).toEqual({ apply_text_tags: true });
   });
+
+  // PDF-ATTACH-1 ATT-8 — the shared notice when the server removed the PDF's attached files.
+  it('says when the PDF’s attached files were removed; nothing is said otherwise', async () => {
+    const ds = source({ uploadPdf: vi.fn(async () => view({ attachments_removed: 2 })) });
+    render(<FixedFormStudio dataSource={ds} templateId="t1" canManage loadPdfFn={fakeLoad} />);
+    await screen.findByTestId('ffs-page-0');
+    expect(screen.getByText('PDF only, up to 10 MB, no scripts. Attached files are removed.')).toBeTruthy();
+    expect(screen.queryByTestId('ffs-attachments-removed')).toBeNull();
+    fireEvent.change(screen.getByTestId('ffs-upload-input'), { target: { files: [pdfFile()] } });
+    expect((await screen.findByTestId('ffs-attachments-removed')).textContent).toBe('We removed 2 attached files from this PDF. Attached files can’t be signed, so they aren’t sent.');
+  });
 });

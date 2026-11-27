@@ -605,6 +605,8 @@ export class EsignSenderRepository {
     // created on the new document in the same transaction. Each names a recipient of this
     // envelope (checked here, as replaceDraftFields does).
     fields?: readonly Omit<SenderFieldInput, 'envelope_document_id' | 'passthrough_id'>[];
+    // PDF-ATTACH-1 ATT-7 — attached files removed from the upload (recorded on the event when ≥ 1).
+    attachments_removed?: number;
   }): Promise<SenderDocumentRow & { revision: number; field_ids: string[] }> {
     return this.prisma.$transaction(async (tx) => {
       await this.assertDraft(tx, input.tenant_id, input.envelope_id, input.expected_revision);
@@ -633,7 +635,7 @@ export class EsignSenderRepository {
         event_type: 'DOCUMENT_ATTACHED',
         actor_type: 'SERVICE',
         actor_ref: input.actor_ref,
-        payload: { envelope_document_id: row.id, title: row.title },
+        payload: { envelope_document_id: row.id, title: row.title, ...(input.attachments_removed !== undefined && input.attachments_removed > 0 ? { attachments_removed: input.attachments_removed } : {}) },
       });
       if (input.pages !== undefined && input.pages.length > 0) {
         await tx.signEnvelopeDocumentPages.create({ data: { envelope_document_id: row.id, tenant_id: input.tenant_id, pages: input.pages.map((p) => ({ width: p.width, height: p.height })) } });

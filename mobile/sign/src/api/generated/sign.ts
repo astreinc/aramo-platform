@@ -5863,6 +5863,8 @@ export interface components {
             revision: number;
             /** @description FIELD-PARITY-1 P2-5 / P2-6 — present only on an upload sent with import_fields or apply_text_tags. */
             field_import?: components["schemas"]["SenderFieldImport"];
+            /** @description PDF-ATTACH-1 ATT-6 — present only when attached files (embedded files, associated files, file-attachment annotations, a portfolio) were removed from the uploaded PDF; the stored document is the one without them. A PDF without attached files is stored byte-for-byte as uploaded. */
+            attachments_removed?: number;
         };
         /** @description FIELD-PARITY-1 P2-5 / P2-6 — the fields an opted-in upload created on the new document, and why anything found was not (or was differently) imported. */
         SenderFieldImport: {
@@ -6120,6 +6122,11 @@ export interface components {
                 height?: number;
                 required?: boolean;
             }[];
+        };
+        /** @description The envelope summary, plus PDF-ATTACH-1 ATT-6's count when any uploaded PDF had attached files removed. */
+        SignApiCreatedEnvelope: components["schemas"]["EnvelopeSummary"] & {
+            /** @description PDF-ATTACH-1 — present only when attached files (embedded files, associated files, file-attachment annotations, a portfolio) were removed from the uploaded PDFs, summed over the documents. */
+            attachments_removed?: number;
         };
         EnvelopeSummary: {
             /** Format: uuid */
@@ -9874,7 +9881,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EnvelopeSummary"];
+                    "application/json": components["schemas"]["SignApiCreatedEnvelope"];
                 };
             };
             400: components["responses"]["BadRequest"];
