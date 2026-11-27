@@ -9,6 +9,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import type { AppServices } from '../../../app/services';
 import { ServicesProvider } from '../../../app/ServicesContext';
 import { DeleteAccountSection } from '../DeleteAccountSection';
+import { clearDeletionReceipt, deletionReceipt } from '../deletionReceiptStore';
 import { deleteConfirmed, openDeletion, signOutAfter, type PrivacyRequest } from '../privacy';
 
 jest.mock('expo-web-browser', () => ({ openBrowserAsync: jest.fn(async () => undefined) }));
@@ -36,7 +37,10 @@ const REQUEST: PrivacyRequest = {
 };
 
 let qc: QueryClient;
-afterEach(() => qc?.clear());
+afterEach(() => {
+  qc?.clear();
+  clearDeletionReceipt();
+});
 
 function renderSection(
   personal: boolean,
@@ -67,7 +71,11 @@ function renderSection(
 }
 
 describe('Delete account (M-A7 §3.3)', () => {
-  it('Personal: DELETE confirms; shows the request ID, status and what is kept; Done signs out', async () => {
+  afterEach(() => clearDeletionReceipt());
+
+  // APP-DELETED-1 A1 — the server ends every session at once: the app keeps the receipt, signs
+  // out itself and never refetches with the ended session; the signed-out screen shows it.
+  it('Personal: DELETE confirms; keeps the receipt and signs out at once', async () => {
     const { call, signOut } = renderSection(true, REQUEST);
     await act(async () => {
       fireEvent.press(await screen.findByTestId('delete-account', undefined, WAIT));
@@ -81,13 +89,10 @@ describe('Delete account (M-A7 §3.3)', () => {
     await act(async () => {
       fireEvent.press(screen.getByTestId('delete-account-confirm'));
     });
-    expect(await screen.findByTestId('delete-account-reference', undefined, WAIT)).toHaveTextContent('PR-7K3M-9QX2-H4TD');
-    expect(screen.getByTestId('delete-account-status')).toHaveTextContent(/Being reviewed/);
-    expect(screen.getByText(/Signed agreements and their evidence/)).toBeTruthy();
-    await act(async () => {
-      fireEvent.press(screen.getByTestId('delete-account-done'));
-    });
     await waitFor(() => expect(signOut).toHaveBeenCalledTimes(1), WAIT);
+    expect(deletionReceipt()?.reference).toBe('PR-7K3M-9QX2-H4TD');
+    // No refetch of the privacy requests with the ended session (only the first GET).
+    expect(call.mock.calls.filter(([, m]) => m === 'get')).toHaveLength(1);
   });
 
   it('Business: explains the organization’s authority and Aramo’s fallback; stays signed in until completed', async () => {
@@ -152,7 +157,7 @@ describe('Apple Go-Live R-8 — Apple token revocation on deletion', () => {
       return method === 'get' ? { items: [] } : REQUEST;
     });
     await confirmDelete();
-    expect(await screen.findByTestId('delete-account-reference', undefined, WAIT)).toBeTruthy();
+    await waitFor(() => expect(deletionReceipt()).not.toBeNull(), WAIT);
     expect(order).toEqual(['revoke', 'delete']);
   });
 
@@ -160,14 +165,14 @@ describe('Apple Go-Live R-8 — Apple token revocation on deletion', () => {
     const revokeApple = jest.fn(async () => Promise.reject(new Error('apple down')));
     renderSection(true, REQUEST, [], { linked: true, revokeApple });
     await confirmDelete();
-    expect(await screen.findByTestId('delete-account-reference', undefined, WAIT)).toBeTruthy();
+    await waitFor(() => expect(deletionReceipt()).not.toBeNull(), WAIT);
     qc.clear();
   });
 
   it('not Apple-linked: no revocation', async () => {
     const r = renderSection(true, REQUEST);
     await confirmDelete();
-    expect(await screen.findByTestId('delete-account-reference', undefined, WAIT)).toBeTruthy();
+    await waitFor(() => expect(deletionReceipt()).not.toBeNull(), WAIT);
     expect(r.revokeApple).not.toHaveBeenCalled();
   });
 });
