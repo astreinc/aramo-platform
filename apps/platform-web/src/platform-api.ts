@@ -254,6 +254,115 @@ export interface PlatformMe {
   role_keys: string[];
 }
 
+
+// ── PRIV-ADMIN-1 (Privacy Requests Administration v1.0 §1.1) — the operator
+// privacy-request API (platform/privacy-requests, platform:tenant:lifecycle:manage).
+
+export type PrivacyRequestType = 'DELETION' | 'ACCESS' | 'EXPORT' | 'CORRECTION';
+export type PrivacySubjectKind = 'ACCOUNT_HOLDER' | 'BUSINESS_MEMBER' | 'GUEST_SIGNER' | 'FORMER_USER' | 'AUTHORIZED_REPRESENTATIVE';
+export type PrivacyChannel = 'IN_APP' | 'WEB' | 'OPERATOR';
+export type PrivacyRequestStatus =
+  | 'RECEIVED'
+  | 'IDENTITY_VALIDATED'
+  | 'DATA_INVENTORY'
+  | 'REFERRED_TO_ORGANIZATION'
+  | 'EXECUTING'
+  | 'COMPLETED'
+  | 'DENIED_WITH_REASON'
+  | 'CANCELLED';
+
+/** One request as the queue and every action return it. */
+export interface PrivacyRequestSummary {
+  id: string;
+  reference: string;
+  request_type: PrivacyRequestType;
+  subject_kind: PrivacySubjectKind;
+  channel: PrivacyChannel;
+  status: PrivacyRequestStatus;
+  status_label: string;
+  referred_to_organization: boolean;
+  due_at: string;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  outcome_code: string | null;
+  outcome_text: string | null;
+  product: string;
+  subject_user_id: string | null;
+  subject_tenant_id: string | null;
+  referred_tenant_id: string | null;
+  assigned_operator_id: string | null;
+  overdue: boolean;
+  /** Counts as stored at inventory time (null before inventory). */
+  inventory: Record<string, unknown> | null;
+  /** Counts written by the execution (null until it completes). */
+  completion_evidence: Record<string, unknown> | null;
+  /** §1.1 — failed attempts since the request last entered EXECUTING (queue rows). */
+  failing?: number;
+}
+
+export interface PrivacyRequestEvent {
+  id: string;
+  event_type: string;
+  from_status: string | null;
+  to_status: string | null;
+  actor_type: string;
+  actor_id: string | null;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
+/** §1.1 — the detail: no contact email (revealed by its own action). */
+export interface PrivacyRequestDetail extends PrivacyRequestSummary {
+  contact_present: boolean;
+  /** Failed attempts since the request last entered EXECUTING. */
+  attempts: number;
+  events: PrivacyRequestEvent[];
+  execution_enabled: boolean;
+}
+
+export type PrivacyDeletionPath = 'personal_full' | 'personal_retain' | 'member' | 'not_executable';
+
+/** §1.1 — the read-only impact preview of a DELETION. */
+export interface PrivacyDeletionPreview {
+  path: PrivacyDeletionPath;
+  reasons: string[];
+  /** Inspector codes; `unknown` when a source could not be read. */
+  dependencies: string[];
+}
+
+export interface PrivacyQueueFilter {
+  status?: PrivacyRequestStatus;
+  request_type?: PrivacyRequestType;
+  include_closed?: boolean;
+  limit?: number;
+  channel?: PrivacyChannel;
+  subject_kind?: PrivacySubjectKind;
+  assigned?: 'me';
+  overdue?: boolean;
+  reference?: string;
+}
+
+/** The query string for the privacy queue (only the filters that are set). */
+export function privacyQueueQuery(f: PrivacyQueueFilter = {}): string {
+  const qs = new URLSearchParams();
+  if (f.status) qs.set('status', f.status);
+  if (f.request_type) qs.set('request_type', f.request_type);
+  if (f.include_closed) qs.set('include_closed', 'true');
+  if (f.limit !== undefined) qs.set('limit', String(f.limit));
+  if (f.channel) qs.set('channel', f.channel);
+  if (f.subject_kind) qs.set('subject_kind', f.subject_kind);
+  if (f.assigned === 'me') qs.set('assigned', 'me');
+  if (f.overdue) qs.set('overdue', 'true');
+  const ref = f.reference?.trim();
+  if (ref) qs.set('reference', ref);
+  const s = qs.toString();
+  return s ? `?${s}` : '';
+}
+
+const privacyPath = (id: string, action?: string): string =>
+  `/platform/privacy-requests/${encodeURIComponent(id)}${action ? `/${action}` : ''}`;
+
 export const platformApi = {
   // PLATFORM-UX-1 B-1a — the signed-in operator's identity (caller only).
   getMe(): Promise<PlatformMe> {
@@ -399,5 +508,63 @@ export const platformApi = {
     body: { reasonCode: string; reasonText?: string },
   ): Promise<LifecycleActionResult> {
     return apiClient.post(`/platform/tenants/${id}/close`, body);
+  },
+
+  // ── PRIV-ADMIN-1 §1.1 — the privacy-request queue, detail and actions.
+  listPrivacyRequests(filter?: PrivacyQueueFilter): Promise<{ items: PrivacyRequestSummary[]; execution_enabled: boolean }> {
+    return apiClient.get(`/platform/privacy-requests${privacyQueueQuery(filter)}`);
+  },
+
+  getPrivacyRequest(id: string): Promise<PrivacyRequestDetail> {
+    return apiClient.get(privacyPath(id));
+  },
+
+  getPrivacyPreview(id: string): Promise<PrivacyDeletionPreview> {
+    return apiClient.get(privacyPath(id, 'preview'));
+  },
+
+  revealPrivacyContact(id: string): Promise<{ contact_email: string }> {
+    return apiClient.post(privacyPath(id, 'reveal-contact'));
+  },
+
+  addPrivacyNote(id: string, body: { note: string }): Promise<unknown> {
+    return apiClient.post(privacyPath(id, 'note'), body);
+  },
+
+  assignPrivacyRequest(id: string, body: { operator_id?: string } = {}): Promise<PrivacyRequestSummary> {
+    return apiClient.post(privacyPath(id, 'assign'), body);
+  },
+
+  validatePrivacyRequest(id: string, body: { note: string }): Promise<PrivacyRequestSummary> {
+    return apiClient.post(privacyPath(id, 'validate'), body);
+  },
+
+  inventoryPrivacyRequest(id: string): Promise<PrivacyRequestSummary> {
+    return apiClient.post(privacyPath(id, 'inventory'));
+  },
+
+  /** Omitting organization_tenant_id refers to the subject's own organization (§1.1). */
+  referPrivacyRequest(id: string, body: { note: string; organization_tenant_id?: string }): Promise<PrivacyRequestSummary> {
+    return apiClient.post(privacyPath(id, 'refer'), body);
+  },
+
+  executePrivacyRequest(id: string, body: { note: string }): Promise<PrivacyRequestSummary> {
+    return apiClient.post(privacyPath(id, 'execute'), body);
+  },
+
+  completePrivacyRequest(id: string, body: { note: string }): Promise<PrivacyRequestSummary> {
+    return apiClient.post(privacyPath(id, 'complete'), body);
+  },
+
+  denyPrivacyRequest(id: string, body: { note: string }): Promise<PrivacyRequestSummary> {
+    return apiClient.post(privacyPath(id, 'deny'), body);
+  },
+
+  cancelPrivacyRequest(id: string, body: { note: string }): Promise<PrivacyRequestSummary> {
+    return apiClient.post(privacyPath(id, 'cancel'), body);
+  },
+
+  returnPrivacyRequestToQueue(id: string, body: { note: string }): Promise<PrivacyRequestSummary> {
+    return apiClient.post(privacyPath(id, 'return-to-queue'), body);
   },
 };

@@ -113,6 +113,30 @@ describe('App — in-shell access denied', () => {
     expect(assign).not.toHaveBeenCalled();
   });
 
+  // PRIV-ADMIN-1 (OD-8) — Privacy › Requests needs platform:tenant:lifecycle:manage.
+  it('gates /privacy-requests and its detail on platform:tenant:lifecycle:manage', async () => {
+    mockApi(['platform:tenant:read']);
+    renderAt('/privacy-requests');
+    const denied = await screen.findByTestId('access-denied');
+    expect(denied).toHaveTextContent("This account can't open Requests");
+    expect(within(denied).getByText('platform:tenant:lifecycle:manage')).toBeInTheDocument();
+    expect(fetchSpy.mock.calls.some((call: unknown[]) => String(call[0]).includes('/platform/privacy-requests'))).toBe(false);
+  });
+
+  it('gates the privacy-request detail on platform:tenant:lifecycle:manage', async () => {
+    mockApi(['platform:tenant:read']);
+    renderAt('/privacy-requests/01900000-0000-7000-8000-00000000a001');
+    expect(await screen.findByTestId('access-denied')).toHaveTextContent("This account can't open Requests");
+    expect(fetchSpy.mock.calls.some((call: unknown[]) => String(call[0]).includes('/platform/privacy-requests'))).toBe(false);
+  });
+
+  it('opens /privacy-requests with platform:tenant:lifecycle:manage', async () => {
+    mockApi(['platform:tenant:read', 'platform:tenant:lifecycle:manage']);
+    renderAt('/privacy-requests');
+    expect(await screen.findByRole('heading', { name: 'Privacy requests' })).toBeInTheDocument();
+    expect(screen.queryByTestId('access-denied')).toBeNull();
+  });
+
   it('gates /admins on platform:admin:invite', async () => {
     mockApi(['platform:tenant:read']);
     renderAt('/admins');

@@ -16,7 +16,9 @@ import { normalizePrivacyEmail } from './privacy-request-crypto.js';
 //                          ExternalIdentity rows removed (after identity retirement);
 //   - removeSignAccess     a Business member's Sign-only roles are removed; the
 //                          organization-wide roles (which also carry other
-//                          products) are never touched.
+//                          products) are never touched. PRIV-ADMIN-1 OD-3: the
+//                          privacy execution no longer calls it (Sign access removal
+//                          is the organization's route, M-A8 §2.3).
 // Every write bumps the principal's authorization version in the same transaction,
 // so cached scopes are invalidated immediately. Only tombstoneRetiredUser deletes rows
 // (the retired user's ExternalIdentity links).

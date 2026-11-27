@@ -506,6 +506,7 @@ export {
   PRIVACY_PROOF_TTL_MS,
   PrivacyRequestService,
   type PrivacyActor,
+  type PrivacyExecutionAttempts,
   type PrivacyRequestEventRecord,
   type PrivacyRequestRecord,
   type PrivacyRequestView,

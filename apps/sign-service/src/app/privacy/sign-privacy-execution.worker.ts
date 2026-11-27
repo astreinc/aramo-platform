@@ -1,5 +1,5 @@
 import { Injectable, Logger, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
-import { PrivacyRequestService, privacyDeletionExecutionEnabled } from '@aramo/identity';
+import { PrivacyRequestService, privacyDeletionExecutionEnabled, privacyExecutionNextAttemptAt } from '@aramo/identity';
 
 import { SignPrivacyExecutionService } from './sign-privacy-execution.service.js';
 
@@ -9,8 +9,18 @@ import { SignPrivacyExecutionService } from './sign-privacy-execution.service.js
 // sign-service workers. OFF unless SIGN_PRIVACY_DELETION_EXECUTION_ENABLED=1
 // (production enablement needs a separate authorization). One request at a time;
 // a `busy` latch stops a slow run from overlapping itself.
+//
+// PRIV-ADMIN-1 OD-4 — bounded retry: a request that failed waits its back-off (1, 5, 15,
+// 60 minutes after failure 1..4) before the next attempt; the execution service returns
+// it to DATA_INVENTORY after the 5th failure. A failure stamps updated_at, so the queue
+// (updated_at ascending) serves requests that have not failed first, and a request in
+// back-off is skipped without taking a slot of the batch (no starvation).
 
 export const PRIVACY_EXECUTION_INTERVAL_MS = 60_000;
+/** Requests attempted per run. */
+export const PRIVACY_EXECUTION_BATCH = 10;
+/** Requests read per run (those in back-off are skipped). */
+export const PRIVACY_EXECUTION_SCAN = 100;
 
 @Injectable()
 export class SignPrivacyExecutionWorker implements OnApplicationBootstrap, OnApplicationShutdown {
@@ -43,16 +53,26 @@ export class SignPrivacyExecutionWorker implements OnApplicationBootstrap, OnApp
     }
   }
 
-  /** One run (public so tests drive it). Returns the number of requests handled. */
-  async tick(): Promise<number> {
+  /**
+   * One run (public so tests drive it; `now` is injectable so a test that pins time
+   * drives the back-off with the same clock). Returns the number of requests handled.
+   */
+  async tick(now: Date = new Date()): Promise<number> {
     if (this.busy || this.stopped || !privacyDeletionExecutionEnabled(process.env)) return 0;
     this.busy = true;
     let handled = 0;
     try {
-      for (const r of await this.requests.listExecuting('SIGN', 10)) {
-        if (r.request_type !== 'DELETION') continue;
+      const due = (await this.requests.listExecuting('SIGN', PRIVACY_EXECUTION_SCAN)).filter((r) => r.request_type === 'DELETION');
+      const attempts = await this.requests.executionAttempts(due.map((r) => r.id));
+      let tried = 0;
+      for (const r of due) {
+        if (tried >= PRIVACY_EXECUTION_BATCH) break;
+        const a = attempts.get(r.id);
+        const next = a === undefined ? null : privacyExecutionNextAttemptAt(a.attempts, a.last_failure_at);
+        if (next !== null && next.getTime() > now.getTime()) continue;
+        tried += 1;
         try {
-          await this.execution.execute(r.id);
+          await this.execution.execute(r.id, now);
           handled += 1;
         } catch (err) {
           this.logger.warn(`privacy execution of ${r.reference} failed: ${(err as Error).name}`);

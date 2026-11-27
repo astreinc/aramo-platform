@@ -5306,6 +5306,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/priv-admin-1-privacy-requests-operator.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -12224,6 +12230,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/privacy/PrivacyRequests.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/platform-web/src/skills/ProposalDetailView.spec.tsx",
         "project": "aramo-platform-web",
         "status": "excluded"
@@ -13052,6 +13064,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/priv-admin-1-privacy-requests-operator.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/sign-seat-limit-console-invite.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -13163,6 +13181,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/personal-legal-status.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/priv-admin-1-sign-privacy.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -15010,6 +15034,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/priv-admin-1-privacy-requests-operator.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },

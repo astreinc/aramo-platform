@@ -50,6 +50,8 @@ import { SIGN_BUSINESS_RETAINED_CATEGORY, SIGN_RETAINED_CATEGORIES, SignPrivacyE
 //   DATA_INVENTORY and waits for the privacy team (a web request is never executed
 //   without an operator). The start answers the same whatever the email (no account
 //   enumeration) and is budgeted per client address and per email.
+//   PRIV-ADMIN-1 OD-11: a web DELETION whose subject is a Business member is referred
+//   to the subject's organization on verify, exactly as in-app (never executed).
 // STATUS by reference: in-app for the requester's own requests; on the web with the
 //   reference AND the email (keyed-hash match) — a mismatch answers the same 404.
 
@@ -276,6 +278,13 @@ export class SignPrivacyRequestService {
         inventory: { ...inventory, account_found: ctx !== null, legal_hold: ctx?.legal_hold ?? false },
       },
     });
+    if (r.request_type === 'DELETION' && subject_kind === 'BUSINESS_MEMBER' && ctx !== null) {
+      r = await this.requests.transition(r.id, 'REFERRED_TO_ORGANIZATION', SYSTEM, {
+        now,
+        patch: { referred_tenant_id: ctx.tenant_id },
+        payload: { referral: 'organization_documents', aramo_fallback: true },
+      });
+    }
     this.log.log(`privacy request ${r.reference} ${r.request_type} received on the web (${subject_kind})`);
     return this.view(r);
   }

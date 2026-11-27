@@ -40,6 +40,8 @@ export type NavKey =
   | 'personal'
   | 'invites'
   | 'signAbuse'
+  // PRIV-ADMIN-1 (OD-9) — Privacy › Requests.
+  | 'privacyRequests'
   | 'skills'
   | 'skillQueue'
   | 'proposals'
@@ -99,6 +101,12 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       // M-A7 §5.2 — reports from every sender (Business and Personal).
       { key: 'signAbuse', label: 'Abuse reports', to: '/sign-abuse-reports', scope: P.tenantLifecycleManage, icon: 'bell' },
     ],
+  },
+  // PRIV-ADMIN-1 (OD-9, OD-8) — the platform-level Privacy group: the privacy-request
+  // queue, on the same scope as its API (platform:tenant:lifecycle:manage).
+  {
+    label: 'Privacy',
+    items: [{ key: 'privacyRequests', label: 'Requests', to: '/privacy-requests', scope: P.tenantLifecycleManage, icon: 'inbox' }],
   },
   {
     label: 'Skills',
@@ -183,6 +191,7 @@ export function navKeyFor(pathname: string): NavKey | null {
   if (p.startsWith('/personal-review')) return 'personal';
   if (p.startsWith('/personal-invites')) return 'invites';
   if (p.startsWith('/sign-abuse-reports')) return 'signAbuse';
+  if (p === '/privacy-requests' || p.startsWith('/privacy-requests/')) return 'privacyRequests';
   if (p.startsWith('/skills/review-queue')) return 'skillQueue';
   if (p.startsWith('/skills/proposals')) return 'proposals';
   if (p === '/skills' || p.startsWith('/skills/')) return 'skills';
@@ -223,6 +232,7 @@ const DETAIL_ROUTES: readonly (readonly [RegExp, string, boolean])[] = [
   [/^\/skills\/proposals\/[^/]+$/, 'Proposal', true],
   [/^\/skills\/(?!review-queue$|proposals$)[^/]+$/, 'Skill', true],
   [/^\/document-templates\/[^/]+$/, 'Template', true],
+  [/^\/privacy-requests\/[^/]+$/, 'Request', true],
 ];
 
 /**
