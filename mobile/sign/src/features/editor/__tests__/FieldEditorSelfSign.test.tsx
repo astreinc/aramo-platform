@@ -2,9 +2,9 @@
 // Document listed by page, the red ✕ and grey handles on a selected field, Finish, and
 // the arm request; the Send flow look is unchanged without the prop.
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import { View } from 'react-native';
+import { Dimensions, Pressable, Text, View } from 'react-native';
 
-import { FieldEditor, type SelfSignChrome } from '../FieldEditor';
+import { FieldEditor, SELF_EXTRA_MAX_SHARE, type SelfSignChrome } from '../FieldEditor';
 import { SELF_SIGN_TOOLS, selfSignTools } from '../fieldTypes';
 
 jest.mock('../PdfPageView', () => ({
@@ -88,6 +88,35 @@ describe('FieldEditor selfSign', () => {
     expect(onFieldsChange.mock.calls.at(-1)![0]).toHaveLength(1);
     fireEvent.press(screen.getByTestId('field-remove'));
     await waitFor(() => expect(onFieldsChange.mock.calls.at(-1)![0]).toHaveLength(0));
+  });
+
+  // APP-SELFSIGN-PANEL-1 (UAT date picker) — a tall value editor scrolls inside a capped area,
+  // so its Save stays reachable and the panel never runs under the navigation bar.
+  it('the selected field’s value editor scrolls inside a capped area and its Save can be pressed', async () => {
+    const onSave = jest.fn();
+    const tall = () => (
+      <View>
+        {Array.from({ length: 12 }, (_, i) => (
+          <Text key={i}>{`Week ${i + 1}`}</Text>
+        ))}
+        <Pressable testID="value-save" onPress={onSave}>
+          <Text>Save</Text>
+        </Pressable>
+      </View>
+    );
+    renderSelf({}, { renderSelectionExtra: tall });
+    await act(async () => {});
+    fireEvent.press(screen.getByLabelText('Date field'));
+    fireEvent.press(screen.getByTestId('self-place-center'));
+    const area = await screen.findByTestId('self-selection');
+    const flat = [area.props.style].flat(Infinity).reduce((a: Record<string, unknown>, x: unknown) => ({ ...a, ...(x as object) }), {});
+    expect(flat.maxHeight).toBe(Math.round(Dimensions.get('window').height * SELF_EXTRA_MAX_SHARE));
+    expect(SELF_EXTRA_MAX_SHARE).toBeLessThanOrEqual(0.5);
+    // The rest of the panel stays: the tools and Finish.
+    expect(screen.getByTestId('self-tools')).toBeTruthy();
+    expect(screen.getByTestId('self-finish')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('value-save'));
+    expect(onSave).toHaveBeenCalledTimes(1);
   });
 
   it('an arm request arms the tool once per id', async () => {
