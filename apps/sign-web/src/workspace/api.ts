@@ -11,6 +11,7 @@ import {
   type FieldTypeOn,
   type InboxActions,
   type SenderActions,
+  type AutoRemindersView,
 } from '@aramo/sign-client';
 
 // Client Rule Consolidation C3 — the limits, patterns, status sets and refusal copy live once
@@ -414,6 +415,8 @@ export interface EnvelopeDetail {
   routing_mode?: RoutingMode;
   // Feature-Parity §1.17 — signers may hand the envelope to someone else (set in DRAFT).
   allow_delegation?: boolean;
+  // SIGN-FREE-PARITY-1 S4 — automatic reminders (absent from an older server).
+  auto_reminders?: AutoRemindersView;
   next_signer_id?: string | null;
   // Sign Mobile M-A3 §3 — the sender's plain-text message to recipients (DRAFT only; null = none).
   message?: string | null;
@@ -940,6 +943,9 @@ export const senderApi = {
   recipients: (id: string, recipients: RecipientWrite[]) => apiClient.put<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/recipients`, { recipients }),
   // Feature-Parity §1.17 — allow signers to delegate (DRAFT; refused while not available).
   setAllowDelegation: (id: string, allow_delegation: boolean) => apiClient.patch<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}`, { allow_delegation }),
+  // SIGN-FREE-PARITY-1 S4 — automatic reminders on or off (while drafting and after sending).
+  setAutoReminders: (id: string, auto_reminders_enabled: boolean) =>
+    apiClient.patch<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/reminders`, { auto_reminders_enabled }),
   // Feature-Parity §1.7–§1.9 — text delivery and the SMS code, per recipient (no envelope revision change).
   messaging: (id: string) => apiClient.get<{ envelope_id: string; recipients: RecipientMessaging[] }>(`${BASE}/envelopes/${enc(id)}/messaging`),
   setMessaging: (id: string, signerId: string, body: { delivery_channel: DeliveryChannel | null; sms_otp_required: boolean; phone_e164?: string }) =>

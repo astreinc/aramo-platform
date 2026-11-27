@@ -20,6 +20,8 @@ export interface FakeEnvelope {
   message: string | null;
   routing_mode: 'PARALLEL' | 'SEQUENTIAL';
   allow_delegation: boolean;
+  /** SIGN-FREE-PARITY-1 S4 — automatic reminders (absent: on). */
+  auto_reminders_enabled?: boolean;
   documents: { id: string; title: string }[];
   recipients: {
     id: string;
@@ -72,6 +74,7 @@ export function fakeSenderServer(
     message: env!.message,
     routing_mode: env!.routing_mode,
     allow_delegation: env!.allow_delegation,
+    auto_reminders: { enabled: env!.auto_reminders_enabled !== false, sent_count: 0, max_count: 5, next_at: null },
     signing_link_valid_days: 7,
     envelope_expires_at: env!.status === 'DRAFT' ? null : '2026-11-24T10:00:00.000Z',
     documents: env!.documents,
@@ -279,6 +282,8 @@ export function fakeSenderServer(
       if ('message' in (r.body ?? {})) env.message = (r.body?.['message'] as string | null) ?? null;
       if (typeof r.body?.['allow_delegation'] === 'boolean')
         env.allow_delegation = r.body['allow_delegation'] as boolean;
+      if (typeof r.body?.['auto_reminders_enabled'] === 'boolean')
+        env.auto_reminders_enabled = r.body['auto_reminders_enabled'] as boolean;
       env.revision += 1;
       return ok(detail());
     }

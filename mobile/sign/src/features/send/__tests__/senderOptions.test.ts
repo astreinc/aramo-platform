@@ -6,7 +6,7 @@ import { createDraftStore } from '../../../state/draftStore';
 import { createEncryptedStore } from '../../../state/encryptedStore';
 import { memoryFiles, memoryKv, nodeAesGcm } from '../../../testing/fakes';
 import { createDocumentBytesStore } from '../documentBytes';
-import type { DraftRecipient } from '../draftModel';
+import { autoRemindersOf, type DraftRecipient } from '../draftModel';
 import {
   changeKind,
   recipientsToWire,
@@ -211,5 +211,46 @@ describe('B2 — sync', () => {
     c.setMessaging(dana.key, { channel: 'WHATSAPP', phone: '0123' });
     expect(await c.sync()).toBe(false);
     expect(c.snapshot.error).toBe('Use the international format, for example +14155550123');
+  });
+});
+
+// SIGN-FREE-PARITY-1 S4 — automatic reminders while drafting: default on, and the switch goes to
+// the server only when it changed here.
+describe('S4 — automatic reminders in the draft', () => {
+  it('default on sends nothing; turned off goes once; turned back on goes once', async () => {
+    const { c, server } = setup();
+    await c.open();
+    await c.addDocument({ title: 'Lease', filename: 'Lease.pdf', bytes: PDF });
+    c.addRecipient({ name: 'Dana Lee', email: 'dana@example.com' });
+    c.setSubject('Lease');
+    expect(await c.sync()).toBe(true);
+    for (const call of server.calls.filter((x) => x.method === 'PATCH')) expect(call.body).not.toHaveProperty('auto_reminders_enabled');
+
+    c.setAutoReminders(false);
+    expect(await c.sync()).toBe(true);
+    expect(server.calls.filter((x) => x.method === 'PATCH').at(-1)!.body).toMatchObject({ auto_reminders_enabled: false });
+    expect(server.envelope!.auto_reminders_enabled).toBe(false);
+    expect(c.snapshot.draft!.payload).toMatchObject({ autoRemindersEnabled: false, serverAutoRemindersEnabled: false });
+
+    c.setSubject('Lease 2026');
+    expect(await c.sync()).toBe(true);
+    expect(server.calls.filter((x) => x.method === 'PATCH').at(-1)!.body).not.toHaveProperty('auto_reminders_enabled');
+
+    c.setAutoReminders(true);
+    expect(await c.sync()).toBe(true);
+    expect(server.calls.filter((x) => x.method === 'PATCH').at(-1)!.body).toMatchObject({ auto_reminders_enabled: true });
+    expect(server.envelope!.auto_reminders_enabled).toBe(true);
+  });
+
+  it('reads the server setting defensively', () => {
+    expect(autoRemindersOf({ enabled: true, sent_count: 2, max_count: 5, next_at: '2026-12-01T10:00:00.000Z' })).toEqual({
+      enabled: true,
+      sent_count: 2,
+      max_count: 5,
+      next_at: '2026-12-01T10:00:00.000Z',
+    });
+    expect(autoRemindersOf({ enabled: false })).toEqual({ enabled: false, sent_count: 0, max_count: 0, next_at: null });
+    expect(autoRemindersOf(undefined)).toBeNull();
+    expect(autoRemindersOf({ enabled: 'yes' })).toBeNull();
   });
 });

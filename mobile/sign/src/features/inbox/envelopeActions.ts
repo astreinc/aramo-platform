@@ -158,6 +158,42 @@ export async function voidEnvelope(
   }
 }
 
+export type AutoRemindersOutcome =
+  | { readonly kind: 'saved'; readonly value: DetailWithEtag }
+  | { readonly kind: 'stale' }
+  | { readonly kind: 'refused'; readonly message: string };
+
+/**
+ * SIGN-FREE-PARITY-1 S4 — turn automatic reminders on or off after sending, with the last-read
+ * ETag. A 412 means the envelope changed: refresh, never resubmit (like Void).
+ */
+export async function setAutoReminders(
+  workspace: WorkspaceClient,
+  current: DetailWithEtag,
+  enabled: boolean,
+): Promise<AutoRemindersOutcome> {
+  try {
+    const r = await workspace.callWithMeta('/v1/sign/sender/envelopes/{id}/reminders', 'patch', {
+      path: { id: current.detail.id },
+      body: { auto_reminders_enabled: enabled },
+      ifMatch: current.etag ?? {
+        id: current.detail.id,
+        revision: current.detail.revision ?? 1,
+      },
+    });
+    return { kind: 'saved', value: { detail: r.data, etag: r.etag } };
+  } catch (e) {
+    if (isApiError(e) && (e.status === 412 || e.is('revision_mismatch', 'precondition_required')))
+      return { kind: 'stale' };
+    return {
+      kind: 'refused',
+      message: isApiError(e)
+        ? refusalMessage(e)
+        : refusalMessage({ reason: 'unknown', code: 'unknown' }),
+    };
+  }
+}
+
 /** Header sub-line (handoff §4.3). */
 export function headerLine(
   detail: SenderEnvelopeDetail,

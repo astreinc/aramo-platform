@@ -118,6 +118,8 @@ describe('M-A12 W1-A — self-sign mode', () => {
     expect(personal.assertMaySend).not.toHaveBeenCalled();
     expect(repo.updateDraft).toHaveBeenCalledWith(expect.objectContaining({ signer_date_format: 'YYYY-MM-DD', execution_mode: 'SINGLE_SIGNATURE' }));
     expect(provider.sendEnvelope).toHaveBeenCalledTimes(1);
+    // SIGN-FREE-PARITY-1 S4 — a Personal send that passed the check records ALLOWED.
+    expect(provider.sendEnvelope).toHaveBeenCalledWith(AUTH.tenant_id, 'e1', AUTH.sub, undefined, expect.objectContaining({ auto_reminders: { send_verdict: 'ALLOWED' } }));
     expect(out.mode).toBe('self');
   });
 

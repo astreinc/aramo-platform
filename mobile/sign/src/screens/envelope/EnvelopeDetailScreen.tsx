@@ -9,7 +9,7 @@
 // HostedSigning screen), when FEATURES.hostedSigning and the server's
 // features.in_person_signing allow it.
 import { useFocusEffect } from '@react-navigation/native';
-import { senderActionsOf } from '@aramo/sign-client';
+import { AUTO_REMINDER_COPY, autoReminderStatusLine, canSetAutoReminders, senderActionsOf } from '@aramo/sign-client';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -55,6 +55,7 @@ import {
   remindLabel,
   reminderRefusalCopy,
   deleteDraftEnvelope,
+  setAutoReminders,
   voidEnvelope,
 } from '../../features/inbox/envelopeActions';
 import {
@@ -149,6 +150,7 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
   const [voidOpen, setVoidOpen] = useState(false);
   const [voidBusy, setVoidBusy] = useState(false);
   const [voidError, setVoidError] = useState<string | null>(null);
+  const [autoBusy, setAutoBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [hostBusy, setHostBusy] = useState<string | null>(null);
   const [selfBusy, setSelfBusy] = useState(false);
@@ -206,6 +208,10 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
   const hostable = hostableSigners(detail, FEATURES.hostedSigning);
   const isOpen = OPEN_STATUSES.has(detail.status);
   const offlineReason = online ? null : OFFLINE_ACTION_REASON;
+  // SIGN-FREE-PARITY-1 S4 — automatic reminders: the one status line (@aramo/sign-client), and the
+  // switch for whoever may void (the same authority the server checks on PATCH …/reminders).
+  const auto = isOpen && detail.auto_reminders && canSetAutoReminders(detail) ? detail.auto_reminders : null;
+  const autoLine = autoReminderStatusLine(auto, (iso) => dateTime(iso));
 
   async function refresh(): Promise<void> {
     setRefreshing(true);
@@ -279,6 +285,20 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
       envelopeId,
       expiresAt: r.expiresAt,
     });
+  }
+
+  async function toggleAutoReminders(enabled: boolean): Promise<void> {
+    if (!data) return;
+    setAutoBusy(true);
+    const r = await setAutoReminders(workspace, data, enabled);
+    setAutoBusy(false);
+    if (r.kind === 'saved') {
+      putDetail(qc, r.value);
+      toast.show(enabled ? AUTO_REMINDER_COPY.turned_on : AUTO_REMINDER_COPY.turned_off);
+    } else if (r.kind === 'stale') {
+      toast.show(refusalMessage({ reason: 'revision_mismatch', code: 'revision_mismatch' }));
+      await q.refetch();
+    } else toast.show(r.message);
   }
 
   async function doVoid(reason: string): Promise<void> {
@@ -702,6 +722,24 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
               >
                 {remindNote}
               </Text>
+            ) : null}
+            {auto && autoLine ? (
+              <View style={{ gap: 6 }} testID="auto-reminders">
+                <Text accessibilityRole="text" style={{ color: t.color.textSecondary, fontSize: 13 }}>
+                  {autoLine}
+                </Text>
+                {actions.void ? (
+                  <Button
+                    testID="auto-reminders-toggle"
+                    variant="secondary"
+                    title={auto.enabled ? AUTO_REMINDER_COPY.turn_off : AUTO_REMINDER_COPY.turn_on}
+                    disabled={!online}
+                    busy={autoBusy}
+                    accessibilityHint={offlineReason ?? undefined}
+                    onPress={() => void toggleAutoReminders(!auto.enabled)}
+                  />
+                ) : null}
+              </View>
             ) : null}
             {actions.void ? (
               <Button

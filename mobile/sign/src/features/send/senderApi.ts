@@ -129,6 +129,8 @@ export interface SenderApi {
       routing_mode?: RoutingMode;
       message?: string | null;
       allow_delegation?: boolean;
+      /** SIGN-FREE-PARITY-1 S4 — automatic reminders while drafting. */
+      auto_reminders_enabled?: boolean;
     },
   ): Promise<Versioned>;
   upload(id: string, ifMatch: string, input: UploadInput): Promise<UploadedDocument>;

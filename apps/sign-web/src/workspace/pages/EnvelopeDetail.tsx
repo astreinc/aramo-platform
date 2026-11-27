@@ -1,7 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { ApiError, Dialog } from '@aramo/fe-foundation';
-import { SIGNABLE_ENVELOPE_STATUSES, VOID_REASON_COPY, VOID_REASON_MAX, nextReminderAt, remindableNow, senderActionsOf, voidReasonProblem } from '@aramo/sign-client';
+import {
+  AUTO_REMINDER_COPY,
+  SIGNABLE_ENVELOPE_STATUSES,
+  VOID_REASON_COPY,
+  VOID_REASON_MAX,
+  autoReminderStatusLine,
+  canSetAutoReminders,
+  nextReminderAt,
+  remindableNow,
+  senderActionsOf,
+  voidReasonProblem,
+} from '@aramo/sign-client';
 
 import { PURGE_LEVELS, errorMessage, fetchSourcePdf, isReminderStale, nextSendTime, purgeLevelLabel, senderApi, sourceLabel, type EnvelopeDetail as Detail, type Evidence, type LedgerEvent, type PurgeLevel } from '../api';
 import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, Loading, RecipientPill, Sel, StatusPill, TextIn, downloadBase64, eventDot, eventLabel, fmtDate, maskEmail, LinkBtn } from '../ui';
@@ -99,6 +110,22 @@ export function EnvelopeDetail() {
 
   const ordered = env.routing_mode === 'SEQUENTIAL';
   const next = ordered ? env.recipients.find((r) => r.id === env.next_signer_id) : undefined;
+  // SIGN-FREE-PARITY-1 S4 — automatic reminders: the one status line (@aramo/sign-client), and the
+  // switch for whoever may void (the same authority the server checks on PATCH …/reminders).
+  const auto = live && env.auto_reminders !== undefined && canSetAutoReminders(env) ? env.auto_reminders : null;
+  const autoLine = autoReminderStatusLine(auto, (iso) => fmtDate(iso, true));
+  const toggleAutoReminders = async (enabled: boolean) => {
+    setBusy(true);
+    try {
+      setEnv(await senderApi.setAutoReminders(env.id, enabled));
+      toast(enabled ? AUTO_REMINDER_COPY.turned_on : AUTO_REMINDER_COPY.turned_off);
+    } catch (e) {
+      toast(errorMessage(e));
+      if (isReminderStale(e)) load();
+    } finally {
+      setBusy(false);
+    }
+  };
 
   // Multi-Signer M-3a — remind one signer, or (no id) everyone who may sign now.
   const remind = async (signer?: { id: string; name: string }) => {
@@ -310,6 +337,16 @@ export function EnvelopeDetail() {
         {env.expires_at !== null && live ? ` · Signing link valid until ${fmtDate(env.expires_at)}` : ''}
         {env.completed_at !== null ? ` · completed ${fmtDate(env.completed_at, true)}` : ''}
       </p>
+      {auto !== null && autoLine !== null ? (
+        <p className="sg-muted" style={{ marginTop: -10, marginBottom: 18, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }} data-testid="auto-reminders">
+          <span role="status">{autoLine}</span>
+          {actions.void ? (
+            <LinkBtn disabled={busy} onClick={() => void toggleAutoReminders(!auto.enabled)} data-testid="auto-reminders-toggle">
+              {auto.enabled ? AUTO_REMINDER_COPY.turn_off : AUTO_REMINDER_COPY.turn_on}
+            </LinkBtn>
+          ) : null}
+        </p>
+      ) : null}
       <div className="sg-grid sg-grid--main">
         <div className="sg-grid">
           <section className="sg-card">

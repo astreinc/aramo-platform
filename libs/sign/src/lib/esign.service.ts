@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { DELEGATE_NAME_MAX, DELEGATE_REASON_MAX, hostedSessionRefusal, isValidEmail, remindableSigners, selfSignTarget, sessionIssueRefusal, signingRecipients as sharedSigningRecipients, signerClearRefusal, signerMayStillSign } from '@aramo/sign-client';
+import { AUTO_REMINDER_DAY_MS, AUTO_REMINDER_SETTABLE_STATUSES, DELEGATE_NAME_MAX, DELEGATE_REASON_MAX, hostedSessionRefusal, isValidEmail, remindableSigners, selfSignTarget, sessionIssueRefusal, signingRecipients as sharedSigningRecipients, signerClearRefusal, signerMayStillSign } from '@aramo/sign-client';
 import { fieldValueRefusal, parseFieldCondition, type FieldCondition, type FieldOptions } from '@aramo/sign-fields';
 
 import { PrismaService } from './prisma/prisma.service.js';
@@ -43,7 +43,6 @@ import {
 } from './ports/evidence-manifest-signer.port.js';
 import { applyReminderLimits, reminderHistory, SIGN_REMINDER_LIMITS, type ReminderLimits } from './reminder-limits.js';
 import { AttestedNameRequiredError, ReminderLimitError, SessionIssueRefusedError } from './domain/envelope-contract-errors.js';
-import { AUTO_REMINDER_DAY_MS, AUTO_REMINDER_SETTABLE_STATUSES } from '@aramo/sign-client';
 import {
   AUTO_REMINDER_ACTOR_TYPE,
   AUTO_REMINDER_CADENCE,

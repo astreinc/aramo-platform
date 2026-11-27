@@ -27,7 +27,7 @@ const CONTACTS = ['contacts'] as const;
 // Sign Mobile D-W6-3 — deleting a draft is a draft write (sign:envelope:create).
 const CREATE = ['create', 'update', 'upload', 'reorder', 'rename', 'remove', 'recipients', 'fields', 'createContact', 'updateContact', 'deleteContact', 'deleteDraft'] as const;
 // M-A5 §3.2 / §4.2 — hosted and self-sign sessions need sign:envelope:send.
-const SEND = ['send', 'remind', 'void', 'hostedSession', 'selfSignSession'] as const;
+const SEND = ['send', 'remind', 'void', 'hostedSession', 'selfSignSession', 'setAutoReminders'] as const;
 
 const handler = (name: string): object => (EsignSenderController.prototype as unknown as Record<string, object>)[name] ?? {};
 

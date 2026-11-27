@@ -750,6 +750,11 @@ export class SendFlowController {
     this.update((q) => ({ ...q, allowDelegation: on }), { meta: true });
   }
 
+  /** SIGN-FREE-PARITY-1 S4 — automatic reminders for this envelope (default on). */
+  setAutoReminders(on: boolean): void {
+    this.update((q) => ({ ...q, autoRemindersEnabled: on }), { meta: true });
+  }
+
   /**
    * Feature-Parity §1.9 — set (a code) or remove (null) a recipient's access code. Kept
    * only until the recipients are saved; the code is never logged. False when refused.

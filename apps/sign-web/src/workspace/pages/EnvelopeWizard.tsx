@@ -13,6 +13,7 @@ import {
   templateAccess,
   titleFromFilename,
   SIGN_SUBJECT_PREFIX,
+  AUTO_REMINDER_COPY,
 } from '@aramo/sign-client';
 
 import {
@@ -422,6 +423,8 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
   const options = sendFeaturesOf(ctx);
   const messagingOn = options.sms || options.whatsapp || options.smsCode;
   const [allowDelegation, setAllowDelegation] = useState(env.allow_delegation === true);
+  // SIGN-FREE-PARITY-1 S4 — automatic reminders (default on; all plans).
+  const [autoReminders, setAutoReminders] = useState(env.auto_reminders?.enabled !== false);
   // The text-message choices saved on the server, by recipient id (read only when available).
   const [msgSaved, setMsgSaved] = useState<Record<string, Msg>>({});
   useEffect(() => {
@@ -515,6 +518,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
     });
   const routingDirty = routing !== (env.routing_mode ?? 'PARALLEL');
   const delegationDirty = allowDelegation !== (env.allow_delegation === true);
+  const autoRemindersDirty = env.auto_reminders !== undefined && autoReminders !== env.auto_reminders.enabled;
   const anyMsgDirty = list.some(msgDirty);
   const duplicate = (() => {
     const seen = new Set<string>();
@@ -543,7 +547,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
 
   const save = async (to: string) => {
     setError('');
-    if (!listDirty && !routingDirty && !delegationDirty && !anyMsgDirty) {
+    if (!listDirty && !routingDirty && !delegationDirty && !autoRemindersDirty && !anyMsgDirty) {
       nav(to);
       return;
     }
@@ -561,6 +565,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
       let d = env;
       if (routingDirty) d = await senderApi.setRouting(env.id, routing);
       if (delegationDirty) d = await senderApi.setAllowDelegation(env.id, allowDelegation);
+      if (autoRemindersDirty) d = await senderApi.setAutoReminders(env.id, autoReminders);
       if (listDirty) {
         const index = new Map(list.map((r, i) => [r.key, i]));
         d = await senderApi.recipients(
@@ -654,6 +659,24 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                 <p className="sg-muted" style={{ fontSize: 12.5, margin: '4px 0 0' }}>
                   A signer can pass their part to another person, who signs in their own name. The hand-off is recorded.
                 </p>
+              ) : null}
+              {/* SIGN-FREE-PARITY-1 S4 — automatic reminders (all plans; shown once the server reports them). */}
+              {env.auto_reminders !== undefined && env.mode !== 'self' ? (
+                <>
+                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10, fontSize: 13 }}>
+                    <Input
+                      unstyled
+                      type="checkbox"
+                      checked={autoReminders}
+                      onChange={(e) => setAutoReminders(e.target.checked)}
+                      data-testid="auto-reminders"
+                    />
+                    {AUTO_REMINDER_COPY.label}
+                  </label>
+                  <p className="sg-muted" style={{ fontSize: 12.5, margin: '4px 0 0' }}>
+                    {AUTO_REMINDER_COPY.help}
+                  </p>
+                </>
               ) : null}
             </div>
           </section>
