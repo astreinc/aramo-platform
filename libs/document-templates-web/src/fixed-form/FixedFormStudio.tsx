@@ -10,7 +10,7 @@ import {
   type PlacedField,
   type UploadFieldOptionsValue,
 } from '@aramo/field-placement-web';
-import { FIELD_GROUP_KEY_MAX, FIELD_LABEL_MAX } from '@aramo/sign-fields';
+import { FIELD_GROUP_KEY_MAX, FIELD_LABEL_MAX, attachmentsRemovedNotice } from '@aramo/sign-fields';
 
 import { ProductTagsSelect, templateProductsLine, type TemplateProductKey } from '../template-products';
 import { loadPdf as defaultLoadPdf, type LoadedPdf } from '../pdf';
@@ -137,6 +137,8 @@ export function FixedFormStudio({
   // FIELD-PARITY-1 P2-5 / P2-6 — the upload options (off by default) and the last import's result.
   const [uploadOpts, setUploadOpts] = useState<UploadFieldOptionsValue>(NO_UPLOAD_FIELD_OPTIONS);
   const [importResult, setImportResult] = useState<FixedFormFieldImport | null>(null);
+  // PDF-ATTACH-1 ATT-8 — the shared notice when the upload's attached files were removed.
+  const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
 
   // Replaces the whole working copy (load, upload, new draft, publish) — the editor resets.
   const adopt = useCallback((v: FixedFormVersionView) => {
@@ -286,12 +288,14 @@ export function FixedFormStudio({
       return;
     }
     setImportResult(null);
+    setAttachmentNotice(null);
     await act('upload', async () => {
       const b64 = bytesToBase64(await file.arrayBuffer());
       const flags = uploadFlags(uploadOpts);
       const v = Object.keys(flags).length > 0 ? await ds.uploadPdf(view.version_id, b64, flags) : await ds.uploadPdf(view.version_id, b64);
       adopt(v);
       setImportResult(v.field_import ?? null);
+      setAttachmentNotice(attachmentsRemovedNotice(v.attachments_removed));
       await loadPdfBytes(v);
     });
   }
@@ -357,9 +361,14 @@ export function FixedFormStudio({
           <button type="button" className="ffs-btn" disabled={busy !== null} onClick={() => fileRef.current?.click()}>
             {view?.content.pdf != null ? 'Replace PDF…' : 'Upload PDF…'}
           </button>
-          <p className="ffs-note">PDF only, up to 10 MB, no scripts or embedded files.</p>
+          <p className="ffs-note">PDF only, up to 10 MB, no scripts. Attached files are removed.</p>
           <UploadFieldOptions value={uploadOpts} onChange={setUploadOpts} disabled={busy !== null} idPrefix="ffs" />
         </>
+      ) : null}
+      {attachmentNotice !== null ? (
+        <p className="ffs-note" role="status" data-testid="ffs-attachments-removed">
+          {attachmentNotice}
+        </p>
       ) : null}
       {importResult !== null ? <FieldImportResult result={importResult} idPrefix="ffs" onClose={() => setImportResult(null)} /> : null}
 

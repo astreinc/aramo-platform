@@ -30,7 +30,8 @@ export function templateErrorMessage(e: unknown, fallback: string): string {
     if (r === 'template_not_published') return 'Only a published default can be withdrawn.';
   }
   // A refused PDF: the one copy in @aramo/sign-fields (sign-web and the Sign app show the same words).
-  if (e.details?.['pdf_problem'] !== undefined) return pdfProblemText(e.details['pdf_problem']);
+  // PDF-ATTACH-1 ATT-10 — the console's only PDF upload is the form Studio, which offers the import option.
+  if (e.details?.['pdf_problem'] !== undefined) return pdfProblemText(e.details['pdf_problem'], { importOption: true });
   const reason = e.details?.['reason'];
   const reasonSuffix = typeof reason === 'string' && reason.length > 0 ? ` (${reason})` : '';
   return `${e.message}${reasonSuffix}`;

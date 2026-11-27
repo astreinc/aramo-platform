@@ -26,7 +26,8 @@ export class InlineFieldTooWideError extends RenderFailedError {
 
 // What is wrong with a refused PDF, in terms a person can act on. Servers send it as
 // details.pdf_problem so every UI picks its words from the same classification.
-export type PdfProblem = 'scripts' | 'password' | 'too_large' | 'too_many_pages' | 'not_pdf' | 'damaged';
+// PDF-ATTACH-1 ATT-4 / ATT-5 — 'attachments': attached files that could not be removed safely.
+export type PdfProblem = 'scripts' | 'attachments' | 'password' | 'too_large' | 'too_many_pages' | 'not_pdf' | 'damaged';
 
 export class UnsafePdfError extends Error {
   constructor(

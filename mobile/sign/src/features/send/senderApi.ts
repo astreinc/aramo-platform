@@ -71,6 +71,8 @@ export interface UploadedDocument {
   readonly pages: PageSize[];
   /** Present only on an upload sent with an option (FIELD-PARITY-2 A-3). */
   readonly fieldImport?: FieldImportResult;
+  /** PDF-ATTACH-1 ATT-6 — present only when attached files were removed from the PDF. */
+  readonly attachmentsRemoved?: number;
 }
 
 /**
@@ -223,6 +225,7 @@ export function createSenderApi(workspace: WorkspaceClient): SenderApi {
         pages: out.pages
           .map((p) => ({ width: p.width ?? 0, height: p.height ?? 0 }))
           .filter((p) => p.width > 0 && p.height > 0),
+        ...(out.attachments_removed !== undefined && out.attachments_removed > 0 ? { attachmentsRemoved: out.attachments_removed } : {}),
         ...(fi
           ? {
               fieldImport: {

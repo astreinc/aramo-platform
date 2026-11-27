@@ -49,6 +49,8 @@ export function fakeSenderServer(
     storageFull?: boolean;
     /** UAT DOC-06 — the first N upload attempts fail with no connection (nothing is stored). */
     networkDownUploads?: number;
+    /** PDF-ATTACH-1 — every upload answers that this many attached files were removed. */
+    attachmentsRemoved?: number;
   } = {},
 ) {
   let storageFull = opts.storageFull === true;
@@ -251,6 +253,7 @@ export function fakeSenderServer(
         title: String(r.body?.['title']),
         page_count: 1,
         pages: [{ width: 612, height: 792 }],
+        ...(opts.attachmentsRemoved !== undefined ? { attachments_removed: opts.attachmentsRemoved } : {}),
         ...(opted
           ? {
               field_import: {

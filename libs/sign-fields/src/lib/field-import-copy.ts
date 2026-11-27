@@ -23,9 +23,13 @@ export const UPLOAD_OPTION_COPY = {
  * A PDF the server refused, keyed by details.pdf_problem (the server's one classification,
  * @aramo/documents-rendering PdfProblem; sent with reason unsafe_pdf, pdf_unsafe or
  * pdf_invalid). One place for every UI: console form Studio, sign-web and the Sign app.
+ * PDF-ATTACH-1 ATT-9 — `scripts` names no upload option: Sign web and the app have none
+ * (PO ruling 2026-11-25). The console, which has the import option, asks for it (ATT-10).
  */
 export const PDF_PROBLEM_COPY = {
-  scripts: `This PDF has built-in scripts, which Aramo doesn’t accept. Fillable forms (like the I-9 or W-4) often do. Turn on “${UPLOAD_OPTION_COPY.import_fields.label}” and upload it again: the scripts are removed and its fields come in. Or print it to a new PDF and upload that copy.`,
+  scripts: 'This PDF has built-in scripts, which Aramo doesn’t accept. Print it to a new PDF and upload that copy.',
+  // PDF-ATTACH-1 ATT-11 — attached files that could not be removed safely (a digitally signed PDF).
+  attachments: 'This PDF has attached files that can’t be removed safely. Print it to a new PDF and upload that copy.',
   password: 'This PDF is password-protected. Remove the password, then upload it again.',
   too_large: 'This PDF is too large. Choose a smaller file.',
   too_many_pages: 'This PDF has too many pages.',
@@ -33,12 +37,29 @@ export const PDF_PROBLEM_COPY = {
   damaged: 'This PDF couldn’t be read. It may be damaged. Print it to a new PDF and upload that copy.',
 } as const;
 
+/** PDF-ATTACH-1 ATT-10 — `scripts` on a surface that offers the import option (the console form Studio). */
+export const PDF_SCRIPTS_WITH_IMPORT_COPY = `This PDF has built-in scripts, which Aramo doesn’t accept. Fillable forms (like the I-9 or W-4) often do. Turn on “${UPLOAD_OPTION_COPY.import_fields.label}” and upload it again: the scripts are removed and its fields come in. Or print it to a new PDF and upload that copy.`;
+
 /** A refused PDF whose problem the server did not say (an older server). */
 export const PDF_REFUSED_FALLBACK = 'This PDF can’t be used. Try another file.';
 
-/** The copy for a refused PDF from its details.pdf_problem. */
-export function pdfProblemText(problem: unknown): string {
+/**
+ * The copy for a refused PDF from its details.pdf_problem. `importOption` is true only on a
+ * surface that offers "Import fields from a fillable PDF" (ATT-10).
+ */
+export function pdfProblemText(problem: unknown, opts: { importOption?: boolean } = {}): string {
+  if (problem === 'scripts' && opts.importOption === true) return PDF_SCRIPTS_WITH_IMPORT_COPY;
   return typeof problem === 'string' && problem in PDF_PROBLEM_COPY ? PDF_PROBLEM_COPY[problem as keyof typeof PDF_PROBLEM_COPY] : PDF_REFUSED_FALLBACK;
+}
+
+/**
+ * PDF-ATTACH-1 ATT-8 — the notice after an upload whose attached files were removed (the
+ * server's `attachments_removed`); null when nothing was removed. Every UI shows these words.
+ */
+export function attachmentsRemovedNotice(count: unknown): string | null {
+  if (typeof count !== 'number' || !Number.isInteger(count) || count < 1) return null;
+  const files = count === 1 ? '1 attached file' : `${count} attached files`;
+  return `We removed ${files} from this PDF. Attached files can’t be signed, so they aren’t sent.`;
 }
 
 /** The plain-language copy of every warning code (the server's `message` adds the specifics). */

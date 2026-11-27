@@ -146,8 +146,16 @@ Objects that nothing references any more are dropped. The file is then written f
 revisions are gone.
 
 Anything else that counts as active content stays in place, and the existing gates refuse it
-exactly as before. That includes a link's Launch action, embedded files, rich media and a
-non-JavaScript `/OpenAction`.
+exactly as before. That includes a link's Launch action, rich media and a non-JavaScript
+`/OpenAction`.
+
+Attached files are handled the same way with or without these options (PDF-ATTACH-1). Every
+upload (Sign send, the Sign API and the console form Studio) removes them before the gate:
+embedded files, associated files (`/AF`), file-attachment annotations and a portfolio
+(`/Collection`). The response says how many were removed (`attachments_removed`), and a PDF
+without attached files is stored exactly as uploaded. A digitally signed PDF that has attached
+files is refused instead (`pdf_problem: attachments`), because removing them would break its
+signature.
 
 An XFA-only form (an XFA stream and no AcroForm widgets) cannot be flattened into anything
 meaningful, so it is refused with reason `xfa_only_form`. The flattened PDF (and, for tags, the

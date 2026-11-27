@@ -7,7 +7,7 @@ import { createEncryptedStore } from '../../../state/encryptedStore';
 import { memoryFiles, memoryKv, nodeAesGcm, type RecordedRequest } from '../../../testing/fakes';
 import { createDocumentBytesStore } from '../documentBytes';
 import { createSenderApi } from '../senderApi';
-import { SendFlowController } from '../sendFlowController';
+import { SendFlowController, removedAttachmentsNotice } from '../sendFlowController';
 import { fakeSenderServer } from './fakeSenderServer';
 
 const PDF = new Uint8Array(
@@ -18,9 +18,9 @@ const PDF = new Uint8Array(
   ),
 );
 
-function setup() {
+function setup(serverOpts: Parameters<typeof fakeSenderServer>[0] = {}) {
   const store = createEncryptedStore({ kv: memoryKv(), cipher: nodeAesGcm, files: memoryFiles() });
-  const server = fakeSenderServer();
+  const server = fakeSenderServer(serverOpts);
   let online = true;
   let n = 0;
   const c = new SendFlowController({
@@ -136,5 +136,35 @@ describe('upload options (FIELD-PARITY-2 A-3)', () => {
     expect(await t.c.sync()).toBe(true);
     expect(writes(t.server.calls).map(path).slice(2)).toEqual(['PUT /recipients', 'POST /documents', 'PUT /fields']);
     expect(t.c.snapshot.draft!.payload.fields.map((f) => f.type)).toEqual(['TEXT', 'SIGNATURE']);
+  });
+});
+
+// PDF-ATTACH-1 ATT-8 — the server removed a PDF's attached files: the app says so in the shared words.
+describe('attached files removed (PDF-ATTACH-1)', () => {
+  it('a PDF added online whose attached files were removed shows the shared notice', async () => {
+    const t = setup({ attachmentsRemoved: 1 });
+    await t.c.open();
+    await t.c.addDocument({ title: 'Incorporation', filename: 'Incorporation.pdf', bytes: PDF });
+    t.c.setStep('recipients');
+    t.c.addRecipient({ name: 'Dana Lee', email: 'dana@example.com' });
+    expect(await t.c.sync()).toBe(true);
+    expect(writes(t.server.calls).some((r) => r.url.endsWith('/documents'))).toBe(true);
+    expect(t.c.snapshot.notice).toBe('Incorporation: We removed 1 attached file from this PDF. Attached files can’t be signed, so they aren’t sent.');
+  });
+
+  it('nothing removed, nothing said', async () => {
+    const t = setup();
+    await t.c.open();
+    await t.c.addDocument({ title: 'Plain', filename: 'Plain.pdf', bytes: PDF });
+    t.c.setStep('recipients');
+    t.c.addRecipient({ name: 'Dana Lee', email: 'dana@example.com' });
+    expect(await t.c.sync()).toBe(true);
+    expect(t.c.snapshot.notice).toBeNull();
+  });
+
+  it('the notice lists each document, in the shared words', () => {
+    expect(removedAttachmentsNotice([])).toBeNull();
+    expect(removedAttachmentsNotice(undefined)).toBeNull();
+    expect(removedAttachmentsNotice([{ title: 'A', count: 2 }, { title: 'B', count: 0 }])).toBe('A: We removed 2 attached files from this PDF. Attached files can’t be signed, so they aren’t sent.');
   });
 });

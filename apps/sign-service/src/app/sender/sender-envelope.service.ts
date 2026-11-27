@@ -1030,9 +1030,14 @@ export class SenderEnvelopeService {
     let bytes: Uint8Array = new Uint8Array(Buffer.from(body.content_base64, 'base64'));
     if (word) bytes = await this.convertWord(words, bytes, given, requestId);
     else if (isWordDocument(bytes)) throw bad(requestId, 'Only PDF files can be signed. Save the document as a PDF and upload it again.', { reason: 'unsupported_file_type' });
+    // PDF-ATTACH-1 ATT-2 — attached files are removed before the gate (every gate run here,
+    // the import path's included); the count is reported (ATT-6 / ATT-7).
+    let attachments_removed = 0;
     const gate = async (b: Uint8Array): Promise<Uint8Array> => {
       try {
-        return await this.safePdf.accept(b);
+        const out = await this.safePdf.acceptRemovingAttachments(b);
+        attachments_removed += out.attachments_removed;
+        return out.bytes;
       } catch (e) {
         if (e instanceof UnsafePdfError) throw bad(requestId, `This file can't be used: ${e.message}`, { reason: 'unsafe_pdf', pdf_problem: e.problem });
         throw e;
@@ -1083,6 +1088,7 @@ export class SenderEnvelopeService {
         byte_size: stored.byte_size,
         source_sha256: stored.source_sha256,
         pages,
+        ...(attachments_removed > 0 ? { attachments_removed } : {}),
         ...(imported !== null && imported.rows.length > 0 ? { fields: imported.rows.map(fieldRowOf) } : {}),
         ...(expected !== undefined ? { expected_revision: expected } : {}),
       });
@@ -1092,7 +1098,18 @@ export class SenderEnvelopeService {
     }
     // Sign Mobile D-W6-1 — the envelope revision after this upload (the controller
     // sets ETag "{envelope_id}.{revision}"), so the next write chains its If-Match.
-    const out = { id: row.id, envelope_id, title: row.title, ordinal: row.ordinal, byte_size: row.byte_size, page_count: pages.length, pages, revision: row.revision };
+    const out = {
+      id: row.id,
+      envelope_id,
+      title: row.title,
+      ordinal: row.ordinal,
+      byte_size: row.byte_size,
+      page_count: pages.length,
+      pages,
+      revision: row.revision,
+      // PDF-ATTACH-1 ATT-6 — present only when attached files were removed.
+      ...(attachments_removed > 0 ? { attachments_removed } : {}),
+    };
     if (imported === null) return out;
     // FIELD-PARITY-1 P2-5 / P2-6 — only when a flag was set: the fields created and why
     // anything found was not (or was differently) imported.

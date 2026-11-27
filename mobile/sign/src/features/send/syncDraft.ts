@@ -57,6 +57,14 @@ export interface SyncResult {
   readonly server: ServerEnvelope | null;
   /** FIELD-PARITY-2 A-3 — what each opted-in upload of this sync created (empty when none). */
   readonly imports: readonly SyncImport[];
+  /** PDF-ATTACH-1 ATT-8 — each upload of this sync whose attached files were removed (empty when none). */
+  readonly removedAttachments: readonly SyncRemovedAttachments[];
+}
+
+/** PDF-ATTACH-1 — one upload whose attached files the server removed, for the shared notice. */
+export interface SyncRemovedAttachments {
+  readonly title: string;
+  readonly count: number;
 }
 
 /** FIELD-PARITY-2 A-3 — the result of one opted-in upload, for the import summary. */
@@ -321,6 +329,7 @@ export async function syncDraft(deps: SyncDeps, input: SendDraft): Promise<SyncR
   // waits (and so do the fields). The fields it created are adopted into the local draft, so the
   // replace-all fields PUT keeps every one the user did not delete.
   const imports: SyncImport[] = [];
+  const removedAttachments: SyncRemovedAttachments[] = [];
   if (p.dirty.recipients && p.documents.some((d) => uploadMakesFields(d.pendingUpload))) await syncRecipients();
   let deferred = false;
   for (const doc of p.documents) {
@@ -366,6 +375,7 @@ export async function syncDraft(deps: SyncDeps, input: SendDraft): Promise<SyncR
       ...adopted,
     });
     if (up.fieldImport) imports.push({ docKey: doc.key, title: doc.title, result: up.fieldImport });
+    if (up.attachmentsRemoved !== undefined && up.attachmentsRemoved > 0) removedAttachments.push({ title: doc.title, count: up.attachmentsRemoved });
     await bytes.remove(doc.key);
   }
 
@@ -415,5 +425,5 @@ export async function syncDraft(deps: SyncDeps, input: SendDraft): Promise<SyncR
     await save({ etag: v.etag, dirty: CLEAN });
   }
 
-  return { draft, server, imports };
+  return { draft, server, imports, removedAttachments };
 }

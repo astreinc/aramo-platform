@@ -454,6 +454,8 @@ export interface UploadedDocument {
     warnings: { code: string; message: string; name?: string; page_number?: number }[];
     stripped: string[];
   };
+  /** PDF-ATTACH-1 ATT-6 — present only when attached files were removed from the PDF. */
+  attachments_removed?: number;
 }
 
 /** FIELD-PARITY-1 P2-4 — GET …/documents/{documentId}/field-suggestions?detect=all. */

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { UnsafePdfError } from './errors.js';
+import type { PdfAttachmentRemoval } from './pdf-attachments.js';
 
 // DOC-2 boundary 6 — the governed safe-upload pipeline (R27). SEPARATE from the
 // renderer: pdf-lib opening a file does NOT mean the file is safe. Enforceable
@@ -18,9 +19,10 @@ const DEFAULT_LIMITS: SafePdfLimits = {
   maxPages: 200,
 };
 
-// Dangerous active-content tokens. Presence => reject (DOC-2 policy is reject,
-// not strip, to keep signable source evidence faithful to what was accepted).
-const ACTIVE_CONTENT_TOKENS = ['/JavaScript', '/JS', '/Launch', '/OpenAction', '/AA', '/EmbeddedFile', '/RichMedia'];
+// Dangerous active-content tokens. Presence => reject. PDF-ATTACH-1 (DOC-2 R-2-6 "reject/strip"):
+// attached files are the one kind that is stripped, by acceptRemovingAttachments before this
+// gate; an attachment still present is refused as 'attachments' (step 6), never 'scripts'.
+const ACTIVE_CONTENT_TOKENS = ['/JavaScript', '/JS', '/Launch', '/OpenAction', '/AA', '/RichMedia'];
 
 // PDF whitespace (NUL, HT, LF, FF, CR, SP) and delimiters ( ) < > [ ] { } / %
 // terminate a name token (ISO 32000-1 §7.2.2). Char codes avoid a control-char regex.
@@ -84,6 +86,28 @@ export class SafePdfPipeline {
     if (pages > this.limits.maxPages) {
       throw new UnsafePdfError(`too many pages (${pages} > ${this.limits.maxPages})`, 'too_many_pages');
     }
+    // 6. PDF-ATTACH-1 ATT-5 — no attached file (ATT-1) may remain, judged on the parsed object
+    // graph so compressed object streams are covered too.
+    const { findPdfAttachment } = await import('./pdf-attachments.js');
+    const attachment = findPdfAttachment(doc);
+    if (attachment !== null) throw new UnsafePdfError(`attached file not allowed: ${attachment}`, 'attachments');
     return bytes;
+  }
+
+  /**
+   * PDF-ATTACH-1 ATT-2 then the gate — the upload entry point for user-supplied PDFs (Sign
+   * send, the Sign API, console fixed forms). Attached files are removed first; a file without
+   * any is passed through byte-for-byte (ATT-3). The e-stamp certificate path keeps `accept`
+   * (a third-party legal document is never rewritten; ruling R3).
+   */
+  async acceptRemovingAttachments(bytes: Uint8Array): Promise<PdfAttachmentRemoval> {
+    let removal: PdfAttachmentRemoval = { bytes, attachments_removed: 0 };
+    // The cheap gates first: nothing too large, not a PDF, or encrypted is ever parsed here.
+    const head = Buffer.from(bytes.slice(0, 5)).toString('latin1');
+    if (bytes.byteLength > 0 && bytes.byteLength <= this.limits.maxBytes && head === '%PDF-' && !/\/Encrypt\b/.test(Buffer.from(bytes).toString('latin1'))) {
+      const { removePdfAttachments } = await import('./pdf-attachments.js');
+      removal = await removePdfAttachments(bytes);
+    }
+    return { bytes: await this.accept(removal.bytes), attachments_removed: removal.attachments_removed };
   }
 }
