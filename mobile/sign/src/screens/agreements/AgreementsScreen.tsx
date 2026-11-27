@@ -48,6 +48,7 @@ import { useRowActions } from '../../features/inbox/useRowActions';
 import { allowanceChipText, allowanceModel, limitBanner } from '../../features/inbox/allowance';
 import {
   useBillingAccount,
+  useFolders,
   useInbox,
   useLocalDrafts,
   useOnline,
@@ -56,6 +57,10 @@ import {
   useSenderEnvelopes,
 } from '../../features/inbox/queries';
 import { EmptyState } from '../../features/inbox/ui';
+import { FolderChips } from '../../features/folders/FolderChips';
+import { ManageFoldersSheet, MoveToFolderSheet } from '../../features/folders/FolderSheets';
+import { chosenFolder, folderTargetFor, inFolder } from '../../features/folders/foldersModel';
+import type { FolderTarget } from '../../features/folders/foldersApi';
 import { consumeSearchFocus } from '../../features/shell/searchFocus';
 import { useFloatingBarSpace } from '../../navigation/FloatingTabBar';
 import type { MainTabParamList } from '../../navigation/types';
@@ -74,6 +79,13 @@ export function AgreementsScreen() {
   const billing = useBillingAccount();
   const ctx = useSenderContext();
   const local = useLocalDrafts();
+  // SIGN-FREE-PARITY-1 S7 — the user's own folders: a chip filter, management, Move to folder.
+  const folders = useFolders();
+  const [folderId, setFolderId] = useState<string | null>(null);
+  const [manageOpen, setManageOpen] = useState(false);
+  const [moving, setMoving] = useState<FolderTarget | null>(null);
+  // A folder deleted elsewhere is no longer chosen: the list shows every folder again.
+  const folder = chosenFolder(folders.data?.items, folderId);
   // The route's filter / range (navigation types) map onto the list's own types here.
   const paramFilter = asListFilter(route.params?.filter);
   const paramRange = asListRange(route.params?.range);
@@ -109,8 +121,8 @@ export function AgreementsScreen() {
     [sent.data, inbox.data, local.data],
   );
   const visible = useMemo(
-    () => sortAgreements(filterAgreements(rows, filter, query, range), sort),
-    [rows, filter, query, range, sort],
+    () => sortAgreements(filterAgreements(inFolder(rows, folder?.id ?? null), filter, query, range), sort),
+    [rows, folder, filter, query, range, sort],
   );
   const needs = needsSignatureSummary(rows);
   const allowance = allowanceModel(billing.data ?? null);
@@ -127,6 +139,7 @@ export function AgreementsScreen() {
       billing.refetch(),
       local.refetch(),
       ctx.refetch(),
+      folders.refetch(),
     ]);
     setRefreshing(false);
   }
@@ -235,6 +248,9 @@ export function AgreementsScreen() {
         </View>
       ) : null}
       <StatusChips value={filter} onChange={setFilter} needsCount={countFor(rows, 'needs_me')} />
+      {folders.data ? (
+        <FolderChips folders={folders.data.items} value={folder?.id ?? null} onChange={setFolderId} onManage={() => setManageOpen(true)} />
+      ) : null}
       <View
         style={[
           styles.headerRow,
@@ -287,6 +303,8 @@ export function AgreementsScreen() {
     <EmptyState title="Couldn’t load agreements" body="Pull down to try again." />
   ) : query.trim() ? (
     <EmptyState {...EMPTY_STATE.search} />
+  ) : folder !== null && inFolder(rows, folder.id).length === 0 ? (
+    <EmptyState title={`Nothing in ${folder.name}`} body="Press and hold an agreement to move it here." />
   ) : filterAgreements(rows, filter).length > 0 ? (
     <EmptyState {...EMPTY_STATE.range} />
   ) : (
@@ -320,6 +338,7 @@ export function AgreementsScreen() {
                 last={index === visible.length - 1}
                 actions={rowActions.actionsFor(item)}
                 onAction={rowActions.run}
+                onLongPress={(r) => setMoving(folderTargetFor(r))}
               />
             </SwipeActions>
           </Card>
@@ -362,6 +381,8 @@ export function AgreementsScreen() {
         onSort={setSort}
       />
       {rowActions.sheets}
+      <ManageFoldersSheet visible={manageOpen} onClose={() => setManageOpen(false)} />
+      <MoveToFolderSheet target={moving} onClose={() => setMoving(null)} />
     </View>
   );
 }

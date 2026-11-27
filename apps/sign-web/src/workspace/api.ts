@@ -170,6 +170,8 @@ export interface EnvelopeRow {
   // Client Rule Consolidation C1 — what the caller may do (the server decides; read it with
   // senderActionsOf, which treats an absent object as nothing allowed).
   actions?: SenderActions;
+  // SIGN-FREE-PARITY-1 S7 — the signed-in user's own folder holding it (absent from an older server = none).
+  folder_id?: string | null;
 }
 
 // A short label for an envelope sent by another Aramo application, or null for Sign's own.
@@ -427,6 +429,8 @@ export interface EnvelopeDetail {
   purge?: PurgeInfo | null;
   // Client Rule Consolidation C1 — what the caller may do (read it with senderActionsOf).
   actions?: SenderActions;
+  // SIGN-FREE-PARITY-1 S7 — the signed-in user's own folder holding it (absent from an older server = none).
+  folder_id?: string | null;
   // FIELD-PARITY-1 P3 S-5 (ruling R-3) — sender-filled fields switched on (the server flag;
   // absent / false: Prepare does not offer them).
   sender_filled_fields_enabled?: boolean;
@@ -909,7 +913,8 @@ export const privacyApi = {
 export const senderApi = {
   context: () => apiClient.get<SenderContext>(`${BASE}/context`),
   summary: () => apiClient.get<Summary>(`${BASE}/summary`),
-  list: (q: { tab?: string; q?: string; days?: number; folder?: 'deleted' } = {}) => {
+  // `folder`: 'deleted' (the Deleted folder) or one of the user's own folder ids (S7).
+  list: (q: { tab?: string; q?: string; days?: number; folder?: string } = {}) => {
     const p = new URLSearchParams();
     if (q.folder !== undefined) p.set('folder', q.folder);
     if (q.tab !== undefined && q.tab !== 'all') p.set('tab', q.tab);
@@ -1173,10 +1178,13 @@ export interface InboxItem {
   can_download: boolean;
   // Client Rule Consolidation C1 — what the user may do with this item (read it with inboxActionsOf).
   actions?: InboxActions;
+  // SIGN-FREE-PARITY-1 S7 — the user's own folder holding it (absent from an older server = none).
+  folder_id?: string | null;
 }
 
 export const inboxApi = {
-  list: () => apiClient.get<{ waiting: InboxItem[]; completed: InboxItem[]; other: InboxItem[] }>('/v1/sign/inbox'),
+  // SIGN-FREE-PARITY-1 S7 — `folder`: one of the user's own folder ids.
+  list: (folder?: string) => apiClient.get<{ waiting: InboxItem[]; completed: InboxItem[]; other: InboxItem[] }>(folder === undefined ? '/v1/sign/inbox' : `/v1/sign/inbox?folder=${encodeURIComponent(folder)}`),
   claim: (token: string) => apiClient.post<{ id: string }>('/v1/sign/inbox/claim', { token }),
   sign: (id: string) => apiClient.post<{ signing_url: string }>(`/v1/sign/inbox/${encodeURIComponent(id)}/sign`),
   signedCopy: (id: string) => apiClient.post<{ download_url: string }>(`/v1/sign/inbox/${encodeURIComponent(id)}/signed-copy`),

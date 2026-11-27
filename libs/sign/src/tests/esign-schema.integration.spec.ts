@@ -142,6 +142,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
         'SignUserSettings',
         'SignAppIssueReport',
         'SignUserFavorite',
+        // SIGN-FREE-PARITY-1 S7 — a user's own folders and what they hold.
+        'SignUserFolder',
+        'SignUserFolderItem',
         // Aramo Sign Mobile M-A13 R-1b — the append-only corrected reissue.
         'ExecutedDocumentReissue',
         'ExecutionCertificateReissue',

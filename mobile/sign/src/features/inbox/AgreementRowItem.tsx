@@ -62,6 +62,7 @@ export function AgreementRowItem({
   now,
   actions = [],
   onAction,
+  onLongPress,
 }: {
   readonly row: AgreementRow;
   readonly onPress: (row: AgreementRow) => void;
@@ -70,6 +71,8 @@ export function AgreementRowItem({
   /** The row's actions (swipeActionsFor), exposed to the screen reader as custom actions. */
   readonly actions?: readonly SwipeAction[];
   readonly onAction?: (row: AgreementRow, kind: SwipeActionKind) => void;
+  /** SIGN-FREE-PARITY-1 S7 — long press: "Move to folder". */
+  readonly onLongPress?: (row: AgreementRow) => void;
 }) {
   const secondary = secondaryLine(row);
   const when = relativeTime(row.activityAt, now);
@@ -83,6 +86,7 @@ export function AgreementRowItem({
       leading={<AgreementStatusIcon icon={statusIcon(row)} />}
       subtitle={when ? `${secondary} · ${when}` : secondary}
       onPress={() => onPress(row)}
+      onLongPress={onLongPress ? () => onLongPress(row) : undefined}
       showSeparator={!last}
       accessibilityLabel={`${row.subject}. ${secondary}. ${when}`}
       accessibilityActions={a11y?.accessibilityActions}

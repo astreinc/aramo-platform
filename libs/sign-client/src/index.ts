@@ -383,3 +383,16 @@ export {
   type ReminderRow,
   type AutoRemindersView,
 } from './lib/reminders.js';
+// SIGN-FREE-PARITY-1 S7 — a user's own folders (name rule, cap and copy; web and the app).
+export {
+  FOLDER_NAME_MAX,
+  FOLDERS_PER_USER_MAX,
+  DELETED_FOLDER,
+  FOLDER_COPY,
+  normalizeFolderName,
+  folderNameRefusal,
+  canCreateFolder,
+  isUserFolderId,
+  type FolderNameRefusal,
+  type FolderCopyKey,
+} from './lib/folders.js';

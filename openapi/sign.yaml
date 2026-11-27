@@ -30,6 +30,11 @@ tags:
       "Waiting for me" (Sign Unified Product S-7). A recipient right — any signed-in Sign user, with or without a Sign
       role. A document joins only through a recipient-specific binding (the recipient's live signing link AND the user's
       verified email); the binding grants no membership in the sender's organization.
+  - name: folders
+    description: >
+      A user's own folders for envelopes (SIGN-FREE-PARITY-1 S7, FP-R8). Per user within the tenant, for what they sent
+      and what they received. An item is in at most one folder; deleting a folder never deletes an envelope. The system
+      Deleted folder is separate and unchanged.
 paths:
   /v1/sign/envelopes:
     post:
@@ -1507,6 +1512,7 @@ paths:
         - $ref: '#/components/parameters/SenderQuery'
         - $ref: '#/components/parameters/SenderDays'
         - $ref: '#/components/parameters/SenderLimit'
+        - $ref: '#/components/parameters/ListFolder'
       responses:
         '200':
           description: OK.
@@ -4379,12 +4385,14 @@ paths:
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
           $ref: '#/components/responses/SenderForbidden'
-  /v1/sign/inbox:
+  /v1/sign/folders:
     get:
-      operationId: listRecipientInbox
-      summary: 'The user’s bound documents: to sign, completed, other (recipient facts only).'
-      description: Session (esign consumer) only; no Sign scope required; every read is keyed by the signed-in user.
-      tags: [inbox]
+      operationId: listSignFolders
+      summary: The signed-in user's own folders (SIGN-FREE-PARITY-1 S7).
+      description: >-
+        Per user within the tenant (FP-R8); never another user's. Session (esign consumer) only; no Sign scope required.
+        The system Deleted folder is not listed here (list folder=deleted).
+      tags: [folders]
       security:
         - senderSession: []
         - senderBearer: []
@@ -4394,7 +4402,119 @@ paths:
           content:
             application/json:
               schema:
+                $ref: '#/components/schemas/SignFolderList'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+    post:
+      operationId: createSignFolder
+      summary: Make a folder (name 1-60 characters, unique for the user without case; at most 100 folders).
+      description: >-
+        400 details.reason folder_name_empty, folder_name_too_long, folder_name_taken or folder_limit_reached (the rule and
+        copy are @aramo/sign-client folders.ts).
+      tags: [folders]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignFolderName'
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignFolder'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/folders/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      operationId: renameSignFolder
+      summary: Rename one of the user's folders (same name rule). Another user's folder is 404.
+      description: SIGN-FREE-PARITY-1 S7. Session (esign consumer) only; keyed by the signed-in user.
+      tags: [folders]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignFolderName'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignFolder'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteSignFolder
+      summary: Delete one of the user's folders. The envelopes in it are not deleted.
+      description: SIGN-FREE-PARITY-1 S7. The folder and what it holds go; every envelope stays where it is.
+      tags: [folders]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted: { type: boolean }
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sign/inbox:
+    get:
+      operationId: listRecipientInbox
+      summary: 'The user’s bound documents: to sign, completed, other (recipient facts only).'
+      description: Session (esign consumer) only; no Sign scope required; every read is keyed by the signed-in user.
+      tags: [inbox]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/ListFolder'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
                 $ref: '#/components/schemas/RecipientInbox'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
@@ -7164,6 +7284,69 @@ paths:
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
           $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/sender/envelopes/{id}/folder:
+    put:
+      operationId: moveSenderEnvelopeToFolder
+      summary: Move an envelope the caller can see into one of their own folders (out of any other of theirs).
+      description: >-
+        SIGN-FREE-PARITY-1 S7. Requires sign:envelope:read and visibility of the envelope. The envelope itself never
+        changes; an envelope is in at most one of the user's folders.
+      tags: [sender, folders]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [folder_id]
+              properties:
+                folder_id:
+                  type: string
+                  format: uuid
+                  description: One of the signed-in user's own folders.
+      responses:
+        '200':
+          description: OK. The folder now holding the item (null after removal).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignFolderPlacement'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: removeSenderEnvelopeFromFolder
+      summary: Take an envelope out of the caller's folder (idempotent).
+      description: SIGN-FREE-PARITY-1 S7. Requires sign:envelope:read and visibility of the envelope.
+      tags: [sender, folders]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignFolderPlacement'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/sign/sender/envelopes/{id}/delete:
     post:
       operationId: deleteSenderEnvelope
@@ -7358,6 +7541,74 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /v1/sign/inbox/{id}/folder:
+    put:
+      operationId: moveInboxItemToFolder
+      summary: Move a received document into one of the user's own folders (out of any other of theirs).
+      description: >-
+        SIGN-FREE-PARITY-1 S7. The id is a claimed item's id or a discovered item's handle. Nothing else changes.
+      tags: [inbox, folders]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [folder_id]
+              properties:
+                folder_id:
+                  type: string
+                  format: uuid
+                  description: One of the signed-in user's own folders.
+      responses:
+        '200':
+          description: OK. The folder now holding the item (null after removal).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignFolderPlacement'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: removeInboxItemFromFolder
+      summary: Take a received document out of the user's folder (idempotent).
+      description: SIGN-FREE-PARITY-1 S7. The id is a claimed item's id or a discovered item's handle.
+      tags: [inbox, folders]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignFolderPlacement'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/sign/inbox/{id}/remove-from-inbox:
     post:
       operationId: removeFromMyInbox
@@ -8256,6 +8507,16 @@ components:
       schema:
         type: string
         format: uuid
+    ListFolder:
+      name: folder
+      in: query
+      required: false
+      description: >-
+        "deleted" lists the system Deleted folder; a folder id (uuid) lists one of the signed-in user's own folders
+        (SIGN-FREE-PARITY-1 S7; never a deleted item; another user's folder is 404). Absent lists everything not deleted,
+        including items in the user's folders. Any other value is 400 unknown folder.
+      schema:
+        type: string
     SenderTab:
       name: tab
       in: query
@@ -8451,6 +8712,41 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    SignFolderName:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Trimmed, inner white space made one space; 1-60 characters.
+    SignFolder:
+      type: object
+      required: [id, name, created_at, updated_at, sender_items, recipient_items]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        sender_items: { type: integer, minimum: 0, description: Envelopes the user sent in this folder. }
+        recipient_items: { type: integer, minimum: 0, description: Documents the user received in this folder. }
+    SignFolderList:
+      type: object
+      required: [items, limit, name_max, can_create]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignFolder'
+        limit: { type: integer, description: The most folders one user may have. }
+        name_max: { type: integer, description: The longest folder name. }
+        can_create: { type: boolean }
+    SignFolderPlacement:
+      type: object
+      required: [folder_id]
+      properties:
+        folder_id:
+          type: [string, 'null']
+          format: uuid
     SignPurgeLevel:
       type: string
       enum: [DOCUMENTS, DOCUMENTS_AND_METADATA, DOCUMENTS_AND_METADATA_AND_REDACT]
@@ -10205,6 +10501,10 @@ components:
             verified email.
         actions:
           $ref: '#/components/schemas/SenderEnvelopeActions'
+        folder_id:
+          type: [string, 'null']
+          format: uuid
+          description: SIGN-FREE-PARITY-1 S7 - the signed-in user's own folder holding this item, or null.
     SenderEnvelopeCounts:
       type: object
       description: >-
@@ -10530,6 +10830,10 @@ components:
           description: A completed envelope the user signed, on a bound item (a discovered item's signed copy comes through the emailed link).
         actions:
           $ref: '#/components/schemas/RecipientInboxItemActions'
+        folder_id:
+          type: [string, 'null']
+          format: uuid
+          description: SIGN-FREE-PARITY-1 S7 - the signed-in user's own folder holding this item, or null.
     RecipientInboxItemActions:
       type: object
       description: >-
@@ -10838,6 +11142,10 @@ components:
           type: boolean
         actions:
           $ref: '#/components/schemas/SenderEnvelopeActions'
+        folder_id:
+          type: [string, 'null']
+          format: uuid
+          description: SIGN-FREE-PARITY-1 S7 - the signed-in user's own folder holding this item, or null.
         routing_mode:
           type: string
           enum: [PARALLEL, SEQUENTIAL]

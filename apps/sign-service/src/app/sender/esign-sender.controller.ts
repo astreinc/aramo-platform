@@ -109,6 +109,21 @@ export class EsignSenderController {
     return this.run(requestId, () => this.envelopes.create(auth, body, requestId));
   }
 
+  // SIGN-FREE-PARITY-1 S7 — move an envelope the caller can see into one of their own
+  // folders (out of any other of theirs), or take it out. The envelope never changes.
+  @Put('envelopes/:id/folder')
+  @HttpCode(HttpStatus.OK)
+  @EsignSenderBoundary(ESIGN_READ_SCOPE)
+  moveToFolder(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Body() body: { folder_id?: unknown }) {
+    return this.run(requestId, () => this.envelopes.moveToFolder(auth, id, body ?? {}, requestId));
+  }
+
+  @Delete('envelopes/:id/folder')
+  @EsignSenderBoundary(ESIGN_READ_SCOPE)
+  removeFromFolder(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string) {
+    return this.run(requestId, () => this.envelopes.removeFromFolder(auth, id, requestId));
+  }
+
   @Get('envelopes/:id')
   @EsignSenderBoundary(ESIGN_READ_SCOPE)
   detail(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Res({ passthrough: true }) res: Response) {

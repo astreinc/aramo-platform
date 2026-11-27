@@ -85,6 +85,7 @@ import { NativeAramoSignatureProvider } from '../native-aramo-signature.provider
 import { PersonalSendGate } from '../personal/personal-send.gate.js';
 import { purgeViewOf } from '../retention/purge-view.js';
 import { SignPurgeService } from '../retention/sign-purge.service.js';
+import { folderIdOf, folderNotFound, parseFolderParam, SignFoldersService } from '../folders/sign-folders.service.js';
 import { SignPaymentsGate, paymentsNotAvailable } from '../payments/sign-payments.gate.js';
 import { WORD_CONVERSION_PORT, WordConversionError, disabledWordConversion, isWordFilename, type WordConversionPort } from '../word-conversion/word-conversion.port.js';
 
@@ -263,11 +264,28 @@ export class SenderEnvelopeService {
     @Optional() @Inject(WORD_CONVERSION_PORT) private readonly wordConversion?: WordConversionPort,
     // Client Rule Consolidation C1 — SIGN_PURGE_ENABLED, for the delete / restore / purge actions.
     @Optional() private readonly purgeEngine?: SignPurgeService,
+    // SIGN-FREE-PARITY-1 S7 — the caller's own folders (absent ⇒ no folders: every row's folder_id is null).
+    @Optional() private readonly folders?: SignFoldersService,
   ) {}
 
   /** Feature-Parity (Amendment A1) — the ownership check, for the QES / e-stamp sender routes. */
   async assertMayChangeEnvelope(auth: AuthContextType, envelope_id: string, requestId: string): Promise<void> {
     await this.assertMayChange(auth, envelope_id, requestId);
+  }
+
+  // SIGN-FREE-PARITY-1 S7 — move an envelope the caller can see into one of their own folders
+  // (out of any other of theirs), or take it out. The envelope itself never changes.
+  async moveToFolder(auth: AuthContextType, envelope_id: string, body: { folder_id?: unknown } | undefined, requestId: string) {
+    const folder_id = folderIdOf(body, requestId);
+    await this.assertVisible(auth, envelope_id, requestId);
+    if (this.folders === undefined) throw folderNotFound(requestId);
+    return this.folders.place(auth, folder_id, 'SENDER', envelope_id, requestId);
+  }
+
+  async removeFromFolder(auth: AuthContextType, envelope_id: string, requestId: string) {
+    await this.assertVisible(auth, envelope_id, requestId);
+    if (this.folders === undefined) return { folder_id: null };
+    return this.folders.unplace(auth, 'SENDER', envelope_id);
   }
 
   /** Throws ENVELOPE_NOT_FOUND unless the caller can see the envelope (owner or read-all). */
@@ -400,9 +418,15 @@ export class SenderEnvelopeService {
 
   async list(auth: AuthContextType, query: { tab?: string; q?: string; days?: string; limit?: string; folder?: string }, requestId: string) {
     const createdBy = await this.ownerFilter(auth, requestId);
-    if (query.folder !== undefined && query.folder !== 'deleted') throw bad(requestId, 'unknown folder', { folder: query.folder });
+    // SIGN-FREE-PARITY-1 S7 — `folder` is the Deleted folder or one of the caller's own folders.
+    const folder = parseFolderParam(query.folder, requestId);
+    if (folder.kind === 'user' && this.folders === undefined) throw folderNotFound(requestId);
     // Retention and Purge W5 — envelopes this tenant deleted live only in the Deleted folder.
     const deleted = this.purges !== undefined ? await this.purges.deletedEnvelopeIds({ kind: 'SENDER', key: auth.tenant_id }) : [];
+    const deletedIds = new Set(deleted);
+    // S7 — a user folder lists what the caller put in it, never a deleted envelope.
+    const folderIds = folder.kind === 'user' && this.folders !== undefined ? (await this.folders.itemRefs(auth, folder.id, 'SENDER', requestId)).filter((id) => !deletedIds.has(id)) : null;
+    const placed = this.folders !== undefined ? await this.folders.placements(auth, 'SENDER') : new Map<string, string>();
     const statuses = ENVELOPE_TABS[query.tab ?? 'all'];
     if (query.tab !== undefined && !(query.tab in ENVELOPE_TABS)) throw bad(requestId, 'unknown tab', { tab: query.tab });
     const days = query.days !== undefined ? Number(query.days) : undefined;
@@ -414,7 +438,7 @@ export class SenderEnvelopeService {
       ...(query.q !== undefined ? { q: query.q } : {}),
       ...(days !== undefined ? { created_since: new Date(Date.now() - days * 86_400_000) } : {}),
       created_by: createdBy,
-      ...(query.folder === 'deleted' ? { only_ids: deleted } : { exclude_ids: deleted }),
+      ...(folder.kind === 'deleted' ? { only_ids: deleted } : folderIds !== null ? { only_ids: folderIds } : { exclude_ids: deleted }),
       limit,
     });
     const last = await this.repo.lastEventAt(auth.tenant_id, rows.map((r) => r.id));
@@ -427,7 +451,7 @@ export class SenderEnvelopeService {
     // Client Rule Consolidation C1 — one facts read per page; Deleted-folder membership from
     // the id list already loaded above (no per-row query).
     const facts = await this.actionFacts(auth, requestId);
-    const deletedSet = new Set(deleted);
+    const deletedSet = deletedIds;
     return {
       items: rows.map((e) => ({
         id: e.id,
@@ -450,6 +474,8 @@ export class SenderEnvelopeService {
         mode: envelopeModeOf(e),
         can_self_sign_now: canSelfSignNow(auth, e),
         purge: purgeViewOf(e),
+        // SIGN-FREE-PARITY-1 S7 — the caller's own folder holding this envelope, or null.
+        folder_id: placed.get(e.id) ?? null,
         // C1 — what the caller may do with this envelope (envelope-actions.ts).
         actions: senderActions(auth, actionEnvelopeOf(e), {
           ...facts,
@@ -479,7 +505,9 @@ export class SenderEnvelopeService {
       const row = actionEnv.recipients.find((x) => x.id === r.id);
       return { ...r, hostable: actions.host_in_person && row !== undefined && hostableRecipient(actionEnv, row, now) };
     });
-    return { ...view, recipients, actions };
+    // SIGN-FREE-PARITY-1 S7 — the caller's own folder holding this envelope, or null.
+    const folder_id = this.folders !== undefined ? ((await this.folders.placements(auth, 'SENDER')).get(env.id) ?? null) : null;
+    return { ...view, recipients, actions, folder_id };
   }
 
   // C1 — the detail's `actions`: the request facts, this tenant's Deleted-folder membership

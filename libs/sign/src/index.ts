@@ -423,6 +423,8 @@ export {
   type SignUserSettingsWrite,
   type SignUserDataCounts,
 } from './lib/sign-user-profile.repository.js';
+// SIGN-FREE-PARITY-1 S7 — a user's own folders for envelopes.
+export { SignUserFolderRepository, SignFolderNameTakenError, type SignFolderItemKind, type SignUserFolderRow } from './lib/sign-user-folder.repository.js';
 export { RECIPIENT_INBOX_SESSION_EVENT, type IssuedRecipientSession } from './lib/recipient-inbox.repository.js';
 // Privacy Notice 1.1 remediation (E-1 to E-4) — retention cleanup.
 export * from './lib/retention/sign-retention.repository.js';

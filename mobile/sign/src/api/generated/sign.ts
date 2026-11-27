@@ -2009,6 +2009,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in user's own folders (SIGN-FREE-PARITY-1 S7).
+         * @description Per user within the tenant (FP-R8); never another user's. Session (esign consumer) only; no Sign scope required. The system Deleted folder is not listed here (list folder=deleted).
+         */
+        get: operations["listSignFolders"];
+        put?: never;
+        /**
+         * Make a folder (name 1-60 characters, unique for the user without case; at most 100 folders).
+         * @description 400 details.reason folder_name_empty, folder_name_too_long, folder_name_taken or folder_limit_reached (the rule and copy are @aramo/sign-client folders.ts).
+         */
+        post: operations["createSignFolder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/folders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete one of the user's folders. The envelopes in it are not deleted.
+         * @description SIGN-FREE-PARITY-1 S7. The folder and what it holds go; every envelope stays where it is.
+         */
+        delete: operations["deleteSignFolder"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename one of the user's folders (same name rule). Another user's folder is 404.
+         * @description SIGN-FREE-PARITY-1 S7. Session (esign consumer) only; keyed by the signed-in user.
+         */
+        patch: operations["renameSignFolder"];
+        trace?: never;
+    };
     "/v1/sign/inbox": {
         parameters: {
             query?: never;
@@ -3334,6 +3384,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/sender/envelopes/{id}/folder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Move an envelope the caller can see into one of their own folders (out of any other of theirs).
+         * @description SIGN-FREE-PARITY-1 S7. Requires sign:envelope:read and visibility of the envelope. The envelope itself never changes; an envelope is in at most one of the user's folders.
+         */
+        put: operations["moveSenderEnvelopeToFolder"];
+        post?: never;
+        /**
+         * Take an envelope out of the caller's folder (idempotent).
+         * @description SIGN-FREE-PARITY-1 S7. Requires sign:envelope:read and visibility of the envelope.
+         */
+        delete: operations["removeSenderEnvelopeFromFolder"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/sender/envelopes/{id}/delete": {
         parameters: {
             query?: never;
@@ -3449,6 +3523,30 @@ export interface paths {
          */
         post: operations["deleteFromInbox"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/inbox/{id}/folder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Move a received document into one of the user's own folders (out of any other of theirs).
+         * @description SIGN-FREE-PARITY-1 S7. The id is a claimed item's id or a discovered item's handle. Nothing else changes.
+         */
+        put: operations["moveInboxItemToFolder"];
+        post?: never;
+        /**
+         * Take a received document out of the user's folder (idempotent).
+         * @description SIGN-FREE-PARITY-1 S7. The id is a claimed item's id or a discovered item's handle.
+         */
+        delete: operations["removeInboxItemFromFolder"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3866,6 +3964,35 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        SignFolderName: {
+            /** @description Trimmed, inner white space made one space; 1-60 characters. */
+            name: string;
+        };
+        SignFolder: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** @description Envelopes the user sent in this folder. */
+            sender_items: number;
+            /** @description Documents the user received in this folder. */
+            recipient_items: number;
+        };
+        SignFolderList: {
+            items: components["schemas"]["SignFolder"][];
+            /** @description The most folders one user may have. */
+            limit: number;
+            /** @description The longest folder name. */
+            name_max: number;
+            can_create: boolean;
+        };
+        SignFolderPlacement: {
+            /** Format: uuid */
+            folder_id: string | null;
+        };
         /** @enum {string} */
         SignPurgeLevel: "DOCUMENTS" | "DOCUMENTS_AND_METADATA" | "DOCUMENTS_AND_METADATA_AND_REDACT";
         SignReportStats: {
@@ -4845,6 +4972,11 @@ export interface components {
             /** @description Aramo Sign Mobile M-A12 W1-A.4 — true when the caller may open a self-sign session on this envelope now (a signing recipient bound to them, still to sign, their turn, an Aramo Sign envelope they may act on, and sign:envelope:send). Drives "Sign now"; POST /v1/sign/sender/envelopes/{id}/self-sign-session re-checks everything, including the verified email. */
             can_self_sign_now?: boolean;
             actions?: components["schemas"]["SenderEnvelopeActions"];
+            /**
+             * Format: uuid
+             * @description SIGN-FREE-PARITY-1 S7 - the signed-in user's own folder holding this item, or null.
+             */
+            folder_id?: string | null;
         };
         /** @description Envelopes the caller may see, by status, over every tab (the same visibility as the list). A status with no envelope is absent (read it as 0). */
         SenderEnvelopeCounts: {
@@ -5039,6 +5171,11 @@ export interface components {
             /** @description A completed envelope the user signed, on a bound item (a discovered item's signed copy comes through the emailed link). */
             can_download: boolean;
             actions?: components["schemas"]["RecipientInboxItemActions"];
+            /**
+             * Format: uuid
+             * @description SIGN-FREE-PARITY-1 S7 - the signed-in user's own folder holding this item, or null.
+             */
+            folder_id?: string | null;
         };
         /** @description Client Rule Consolidation C1 - what the signed-in user may do with this inbox item, decided by the server (clients render it and never derive it). Always present on every item. sign equals can_sign and download equals can_download. */
         RecipientInboxItemActions: {
@@ -5217,6 +5354,11 @@ export interface components {
             source_application?: string;
             editable: boolean;
             actions?: components["schemas"]["SenderEnvelopeActions"];
+            /**
+             * Format: uuid
+             * @description SIGN-FREE-PARITY-1 S7 - the signed-in user's own folder holding this item, or null.
+             */
+            folder_id?: string | null;
             /** @enum {string} */
             routing_mode?: "PARALLEL" | "SEQUENTIAL";
             /** @description When signing in order and the envelope is open, the signer whose turn it is. */
@@ -5963,6 +6105,8 @@ export interface components {
         RegulatedEnvelopeId: string;
         /** @description The envelope document id (UUID). */
         DocumentId: string;
+        /** @description "deleted" lists the system Deleted folder; a folder id (uuid) lists one of the signed-in user's own folders (SIGN-FREE-PARITY-1 S7; never a deleted item; another user's folder is 404). Absent lists everything not deleted, including items in the user's folders. Any other value is 400 unknown folder. */
+        ListFolder: string;
         /** @description Status tab. */
         SenderTab: "all" | "drafts" | "waiting" | "completed" | "declined" | "voided" | "expired" | "follow_up";
         /** @description Free text matched against subject and recipient name or email. */
@@ -7314,6 +7458,8 @@ export interface operations {
                 days?: components["parameters"]["SenderDays"];
                 /** @description Maximum rows. */
                 limit?: components["parameters"]["SenderLimit"];
+                /** @description "deleted" lists the system Deleted folder; a folder id (uuid) lists one of the signed-in user's own folders (SIGN-FREE-PARITY-1 S7; never a deleted item; another user's folder is 404). Absent lists everything not deleted, including items in the user's folders. Any other value is 400 unknown folder. */
+                folder?: components["parameters"]["ListFolder"];
             };
             header?: never;
             path?: never;
@@ -9701,9 +9847,118 @@ export interface operations {
             403: components["responses"]["SenderForbidden"];
         };
     };
-    listRecipientInbox: {
+    listSignFolders: {
         parameters: {
             query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignFolderList"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    createSignFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignFolderName"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignFolder"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    deleteSignFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        deleted: boolean;
+                    };
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    renameSignFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignFolderName"];
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignFolder"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listRecipientInbox: {
+        parameters: {
+            query?: {
+                /** @description "deleted" lists the system Deleted folder; a folder id (uuid) lists one of the signed-in user's own folders (SIGN-FREE-PARITY-1 S7; never a deleted item; another user's folder is 404). Absent lists everything not deleted, including items in the user's folders. Any other value is 400 unknown folder. */
+                folder?: components["parameters"]["ListFolder"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9719,6 +9974,7 @@ export interface operations {
                     "application/json": components["schemas"]["RecipientInbox"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["SenderUnauthorized"];
             403: components["responses"]["SenderForbidden"];
         };
@@ -12141,6 +12397,69 @@ export interface operations {
             403: components["responses"]["SenderForbidden"];
         };
     };
+    moveSenderEnvelopeToFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Format: uuid
+                     * @description One of the signed-in user's own folders.
+                     */
+                    folder_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK. The folder now holding the item (null after removal). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignFolderPlacement"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    removeSenderEnvelopeFromFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignFolderPlacement"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     deleteSenderEnvelope: {
         parameters: {
             query?: never;
@@ -12320,6 +12639,67 @@ export interface operations {
             403: components["responses"]["SenderForbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    moveInboxItemToFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Format: uuid
+                     * @description One of the signed-in user's own folders.
+                     */
+                    folder_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK. The folder now holding the item (null after removal). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignFolderPlacement"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    removeInboxItemFromFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignFolderPlacement"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     removeFromMyInbox: {

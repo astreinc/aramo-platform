@@ -22,6 +22,7 @@ import { purgeNotEnabled, refusalError } from '../sender/envelope-actions.js';
 import { purgeViewOf } from '../retention/purge-view.js';
 import { SignPurgeService } from '../retention/sign-purge.service.js';
 import { recipientSenderLabel } from '../sender-label.js';
+import { folderIdOf, folderNotFound, parseFolderParam, SignFoldersService } from '../folders/sign-folders.service.js';
 
 import { type InboxActionEntry, type InboxActionFacts, inboxActions, inboxDownloadDecision, inboxSignable } from './inbox-actions.js';
 
@@ -87,6 +88,8 @@ export class RecipientInboxService {
     private readonly identity: IdentityRepository,
     @Optional() private readonly purges?: SignPurgeRepository,
     @Optional() private readonly purgeEngine?: SignPurgeService,
+    // SIGN-FREE-PARITY-1 S7 — the user's own folders (absent ⇒ no folders: folder_id is null).
+    @Optional() private readonly folders?: SignFoldersService,
   ) {}
 
   private base(requestId: string): string {
@@ -138,7 +141,7 @@ export class RecipientInboxService {
     return { id: b.id };
   }
 
-  private async view(r: RecipientInboxEntry, user_id: string, id: string = r.id, folder: InboxActionFacts = { in_deleted_folder: false, removed: false }) {
+  private async view(r: RecipientInboxEntry, user_id: string, id: string = r.id, folder: InboxActionFacts = { in_deleted_folder: false, removed: false }, folder_id: string | null = null) {
     // M-A13 R-3 — a PERSONAL sender is shown by their own name, never the stored tenant handle.
     const from = await recipientSenderLabel(this.identity, r.envelope_tenant_id, r.envelope.created_by ?? null);
     const now = new Date();
@@ -173,6 +176,8 @@ export class RecipientInboxService {
       ...(purge !== null ? { purge } : {}),
       // Client Rule Consolidation C1 — what the user may do with this item.
       actions,
+      // SIGN-FREE-PARITY-1 S7 — the user's own folder holding this item, or null.
+      folder_id,
     };
   }
 
@@ -188,17 +193,22 @@ export class RecipientInboxService {
   }
 
   async list(auth: AuthContextType, folder?: string, requestId = '') {
-    if (folder !== undefined && folder !== 'deleted') throw new AramoError('VALIDATION_ERROR', 'unknown folder', 400, { requestId, details: { folder } });
+    // SIGN-FREE-PARITY-1 S7 — `folder` is the Deleted folder or one of the user's own folders.
+    const which = parseFolderParam(folder, requestId);
+    if (which.kind === 'user' && this.folders === undefined) throw folderNotFound(requestId);
+    const inUserFolder = which.kind === 'user' && this.folders !== undefined ? new Set(await this.folders.itemRefs(auth, which.id, 'RECIPIENT', requestId)) : null;
+    const placed = this.folders !== undefined ? await this.folders.placements(auth, 'RECIPIENT') : new Map<string, string>();
     const deleted = new Set(this.purges !== undefined ? await this.purges.deletedEnvelopeIds({ kind: 'RECIPIENT', key: auth.sub }) : []);
     // M-A17 §3 — entries this user deleted from their inbox are listed in the Deleted folder.
     const removed = await this.repo.removedSignerIds(auth.sub);
-    const inFolder = (r: RecipientInboxRow): boolean => (folder === 'deleted') === (deleted.has(r.envelope_id) || removed.has(r.signer_id));
+    // A user folder lists what the user put in it, never an item in the Deleted folder.
+    const inFolder = (r: RecipientInboxRow): boolean => (which.kind === 'deleted') === (deleted.has(r.envelope_id) || removed.has(r.signer_id)) && (inUserFolder === null || inUserFolder.has(r.signer_id));
     const bound = (await this.repo.listForUser(auth.sub)).filter(inFolder).map((row) => ({ row, id: row.id }));
     // Dedupe (rule 5): a recipient reachable through a binding is listed once, as bound.
     const boundSigners = new Set(bound.map((b) => b.row.signer_id));
     const found = (await this.discovered(auth, inboxHandleKey())).filter((d) => inFolder(d.row) && !boundSigners.has(d.row.signer_id));
     const items = await Promise.all(
-      [...bound, ...found].map((i) => this.view(i.row, auth.sub, i.id, { in_deleted_folder: deleted.has(i.row.envelope_id) || removed.has(i.row.signer_id), removed: removed.has(i.row.signer_id) })),
+      [...bound, ...found].map((i) => this.view(i.row, auth.sub, i.id, { in_deleted_folder: deleted.has(i.row.envelope_id) || removed.has(i.row.signer_id), removed: removed.has(i.row.signer_id) }, placed.get(i.row.signer_id) ?? null)),
     );
     return {
       waiting: items.filter((i) => i.can_sign || i.my_status === 'upcoming'),
@@ -305,6 +315,22 @@ export class RecipientInboxService {
     const entry = await this.ownEntry(auth, id, requestId);
     await this.repo.removeFromInbox(auth.sub, entry);
     return { removed: true };
+  }
+
+  // SIGN-FREE-PARITY-1 S7 — move a received item (a claimed item's id or a discovered item's
+  // handle, as :id/sign takes) into one of the user's own folders, or take it out. Keyed by the
+  // user's signer id, as RecipientInboxRemoval. Nothing else changes.
+  async moveToFolder(auth: AuthContextType, id: string, body: { folder_id?: unknown } | undefined, requestId: string) {
+    const folder_id = folderIdOf(body, requestId);
+    const entry = await this.ownEntry(auth, id, requestId);
+    if (this.folders === undefined) throw folderNotFound(requestId);
+    return this.folders.place(auth, folder_id, 'RECIPIENT', entry.signer_id, requestId);
+  }
+
+  async removeFromFolder(auth: AuthContextType, id: string, requestId: string) {
+    const entry = await this.ownEntry(auth, id, requestId);
+    if (this.folders === undefined) return { folder_id: null };
+    return this.folders.unplace(auth, 'RECIPIENT', entry.signer_id);
   }
 
   // M-A17 §2 — Restore: back to the inbox.

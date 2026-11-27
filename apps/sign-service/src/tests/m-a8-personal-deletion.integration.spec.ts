@@ -129,6 +129,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     await db.query(`INSERT INTO "sign"."SignUserSettings" (tenant_id, user_id, date_format) VALUES ($1,$2,'DD/MM/YYYY')`, [a.tenant, a.user]);
     await db.query(`INSERT INTO "sign"."SignAppIssueReport" (id, tenant_id, user_id, os, app_version) VALUES ($1,$2,$3,'android','1.0.0')`, [randomUUID(), a.tenant, a.user]);
     await db.query(`INSERT INTO "sign"."SignUserFavorite" (tenant_id, user_id, item_kind, item_ref) VALUES ($1,$2,'TEMPLATE',$3)`, [a.tenant, a.user, randomUUID()]);
+    // SIGN-FREE-PARITY-1 S7 — a folder of the user's own, holding one envelope id.
+    const folderId = randomUUID();
+    await db.query(`INSERT INTO "sign"."SignUserFolder" (id, tenant_id, owner_user_id, name) VALUES ($1,$2,$3,'Leases')`, [folderId, a.tenant, a.user]);
+    await db.query(`INSERT INTO "sign"."SignUserFolderItem" (folder_id, item_kind, item_ref) VALUES ($1,'SENDER',$2)`, [folderId, randomUUID()]);
     await db.query(
       `INSERT INTO "sign"."SignPushDevice" (id, tenant_id, user_id, device_session_id, platform, provider, push_token_ciphertext, push_token_digest, app_version) VALUES ($1,$2,$3,$4,'android','fcm','cipher','digest','1.0.0')`,
       [randomUUID(), a.tenant, a.user, randomUUID()],
@@ -197,7 +201,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
             + (SELECT count(*) FROM "sign"."SignUserProfile" WHERE tenant_id=$1 AND user_id=$2)
             + (SELECT count(*) FROM "sign"."SignUserSettings" WHERE tenant_id=$1 AND user_id=$2)
             + (SELECT count(*) FROM "sign"."SignAppIssueReport" WHERE tenant_id=$1 AND user_id=$2)
-            + (SELECT count(*) FROM "sign"."SignUserFavorite" WHERE tenant_id=$1 AND user_id=$2) AS n`,
+            + (SELECT count(*) FROM "sign"."SignUserFavorite" WHERE tenant_id=$1 AND user_id=$2)
+            + (SELECT count(*) FROM "sign"."SignUserFolder" WHERE tenant_id=$1 AND owner_user_id=$2) AS n`,
       [a.tenant, a.user],
     );
   const liveSessions = (user_id: string) => n(`SELECT count(*) AS n FROM auth_storage."NativeDeviceSession" WHERE user_id=$1 AND revoked_at IS NULL`, [user_id]);

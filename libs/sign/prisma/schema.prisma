@@ -1548,3 +1548,35 @@ model SignUserFavorite {
   @@id([tenant_id, user_id, item_kind, item_ref])
   @@schema("sign")
 }
+
+// SIGN-FREE-PARITY-1 S7 (FP-R8) — a user's own folder for envelopes (per user, within the
+// tenant). Name ≤ 60 characters (CHECK), unique per owner without case (expression index
+// "SignUserFolder_owner_name_key" on lower(name), in the migration only). The system Deleted
+// folder (SignEnvelopePartyDeletion) is separate and unchanged.
+model SignUserFolder {
+  id            String               @id @db.Uuid
+  tenant_id     String               @db.Uuid
+  owner_user_id String               @db.Uuid
+  name          String
+  created_at    DateTime             @default(now()) @db.Timestamptz
+  updated_at    DateTime             @default(now()) @updatedAt @db.Timestamptz
+  items         SignUserFolderItem[]
+
+  @@index([tenant_id, owner_user_id], map: "SignUserFolder_owner_idx")
+  @@schema("sign")
+}
+
+// S7 — what a folder holds: item_kind SENDER (item_ref = an envelope id) or RECIPIENT
+// (item_ref = the owner's signer id, as RecipientInboxRemoval). No FK to the envelope
+// (SignUserFavorite precedent). Deleting the folder removes its items, never an envelope.
+model SignUserFolderItem {
+  folder_id String         @db.Uuid
+  item_kind String
+  item_ref  String         @db.Uuid
+  added_at  DateTime       @default(now()) @db.Timestamptz
+  folder    SignUserFolder @relation(fields: [folder_id], references: [id], onDelete: Cascade)
+
+  @@id([folder_id, item_kind, item_ref])
+  @@index([item_kind, item_ref], map: "SignUserFolderItem_item_idx")
+  @@schema("sign")
+}

@@ -1,4 +1,4 @@
-import { applyDecorators, Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Query, UseFilters, UseGuards } from '@nestjs/common';
+import { applyDecorators, Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Put, Query, UseFilters, UseGuards } from '@nestjs/common';
 import { AramoExceptionFilter, RequestId } from '@aramo/common';
 import { AuthContext, type AuthContextType, JwtAuthGuard } from '@aramo/auth';
 import { EsignSenderConsumerGuard } from '@aramo/identity';
@@ -98,6 +98,20 @@ export class RecipientInboxController {
   @RecipientInboxBoundary()
   returnToInbox(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string) {
     return this.run(requestId, () => this.inbox.returnToInbox(auth, id, requestId));
+  }
+
+  // SIGN-FREE-PARITY-1 S7 — into / out of one of the user's own folders.
+  @Put(':id/folder')
+  @HttpCode(HttpStatus.OK)
+  @RecipientInboxBoundary()
+  moveToFolder(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Body() body: { folder_id?: unknown }) {
+    return this.run(requestId, () => this.inbox.moveToFolder(auth, id, body ?? {}, requestId));
+  }
+
+  @Delete(':id/folder')
+  @RecipientInboxBoundary()
+  removeFromFolder(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string) {
+    return this.run(requestId, () => this.inbox.removeFromFolder(auth, id, requestId));
   }
 
   @Delete(':id')

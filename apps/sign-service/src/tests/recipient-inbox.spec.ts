@@ -117,7 +117,7 @@ describe('recipient-only access', () => {
     const out = await svc.list(auth);
     expect(repo.listForUser).toHaveBeenCalledWith(USER);
     expect(Object.keys(out.waiting[0]!).sort()).toEqual(
-      ['actions', 'can_download', 'can_sign', 'completed_at', 'envelope_expires_at', 'envelope_status', 'expires_at', 'from', 'i_am_sender', 'id', 'my_status', 'sent_at', 'signed_at', 'signing_link_valid_days', 'source', 'subject'].sort(),
+      ['actions', 'can_download', 'can_sign', 'completed_at', 'envelope_expires_at', 'envelope_status', 'expires_at', 'folder_id', 'from', 'i_am_sender', 'id', 'my_status', 'sent_at', 'signed_at', 'signing_link_valid_days', 'source', 'subject'].sort(),
     );
     // Client Rule Consolidation C1 — the actions are booleans only (no sender-tenant data).
     expect(out.waiting[0]!.actions).toEqual({ sign: true, download: false, delete: true, restore: false, report: true });

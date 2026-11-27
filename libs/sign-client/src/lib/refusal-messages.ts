@@ -6,6 +6,7 @@
 import { pdfProblemText } from '@aramo/sign-fields';
 
 import { WORD_COPY } from './file-rules.js';
+import { FOLDER_COPY } from './folders.js';
 import { isDailyAllowance, limitReachedCopy } from './plan.js';
 import { ACCESS_CODE_MAX_LENGTH, ACCESS_CODE_MIN_LENGTH, PHONE_HINT, SIGNERS_FULL_MESSAGE } from './validation.js';
 import { MAX_COPY_RECIPIENTS } from './recipients.js';
@@ -54,6 +55,12 @@ export const REFUSAL_COPY: Readonly<Record<string, string>> = {
   ...RECIPIENT_COPY,
   // FIELD-PARITY-1 P3 §6 — a field value the server refused (fill: VALIDATION_ERROR details.reason).
   ...SIGNER_FIELD_VALUE_COPY,
+  // SIGN-FREE-PARITY-1 S7 — a folder name or the folder cap the server refused.
+  folder_name_empty: FOLDER_COPY.folder_name_empty,
+  folder_name_too_long: FOLDER_COPY.folder_name_too_long,
+  folder_name_taken: FOLDER_COPY.folder_name_taken,
+  folder_limit_reached: FOLDER_COPY.folder_limit_reached,
+  folder_not_found: FOLDER_COPY.folder_not_found,
   // Sign-in (native auth, M-A1; Apple Go-Live A1).
   idp_not_permitted_for_tenant: 'Your account doesn’t use this sign-in option. Sign in the way you usually do.',
   invalid_grant: 'Sign-in didn’t finish. Try again.',

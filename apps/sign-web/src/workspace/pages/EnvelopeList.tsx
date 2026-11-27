@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Dialog } from '@aramo/fe-foundation';
 import { SIGNABLE_ENVELOPE_STATUSES, senderActionsOf } from '@aramo/sign-client';
@@ -6,6 +6,7 @@ import { SIGNABLE_ENVELOPE_STATUSES, senderActionsOf } from '@aramo/sign-client'
 import { errorMessage, inboxApi, isInboxItemNotFound, senderApi, sourceLabel, type EnvelopeList as EnvelopeListData, type EnvelopeRow, type EnvelopeStatus } from '../api';
 import { Btn, Check, ErrorBox, Icon, LinkBtn, Loading, PurgeTag, Sel, StatusPill, TextIn, fmtDate, rel } from '../ui';
 import { useWorkspace } from '../workspace';
+import { MoveToFolderDialog, type FolderTarget } from '../folder-picker';
 
 import { DELETE_WHEN_FINISHED } from './EnvelopeDetail';
 
@@ -42,12 +43,16 @@ const TABS: { key: string; label: string; statuses: EnvelopeStatus[] | null }[] 
   { key: 'follow_up', label: 'Declined or expired', statuses: ['DECLINED', 'EXPIRED'] },
 ];
 
-export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {
+// SIGN-FREE-PARITY-1 S7 — `folder` is 'deleted' (the Deleted folder) or one of the user's own
+// folder ids; a user folder shows `title` and `headActions` (its rename / delete) and no tabs.
+export function EnvelopeList({ folder, title, headActions }: { folder?: string; title?: string; headActions?: ReactNode } = {}) {
   const { ctx, base, toast, refreshCounts } = useWorkspace();
   const navigate = useNavigate();
   const deleted = folder === 'deleted';
+  const userFolder = folder !== undefined && !deleted ? folder : undefined;
+  const [moving, setMoving] = useState<FolderTarget | null>(null);
   const [params, setParams] = useSearchParams();
-  const tab = !deleted && TABS.some((t) => t.key === params.get('tab')) ? (params.get('tab') as string) : 'all';
+  const tab = !deleted && userFolder === undefined && TABS.some((t) => t.key === params.get('tab')) ? (params.get('tab') as string) : 'all';
   const [pending, setPending] = useState<{ row: EnvelopeRow; action: PendingAction } | null>(null);
   const [actionError, setActionError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -67,7 +72,7 @@ export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {
     let live = true;
     const t = setTimeout(() => {
       senderApi
-        .list({ tab, q, ...(days !== undefined ? { days } : {}), ...(deleted ? { folder: 'deleted' as const } : {}) })
+        .list({ tab, q, ...(days !== undefined ? { days } : {}), ...(folder !== undefined ? { folder } : {}) })
         .then((d) => {
           if (live) {
             setData(d);
@@ -82,7 +87,7 @@ export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {
       live = false;
       clearTimeout(t);
     };
-  }, [tab, q, days, deleted, reload]);
+  }, [tab, q, days, folder, reload]);
 
   const act = useCallback(async () => {
     if (pending === null) return;
@@ -149,8 +154,9 @@ export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {
   return (
     <div className="sg-page sg-page--wide">
       <div className="sg-pagehead">
-        <h1 className="sg-h1">{deleted ? 'Deleted' : 'Envelopes'}</h1>
-        {ctx.can_send && !deleted ? (
+        <h1 className="sg-h1">{deleted ? 'Deleted' : (title ?? 'Envelopes')}</h1>
+        {userFolder !== undefined ? <div className="sg-pagehead__end">{headActions}</div> : null}
+        {ctx.can_send && !deleted && userFolder === undefined ? (
           <div className="sg-pagehead__end">
             <Link className="sg-btn sg-btn--primary" to={`${base}/envelopes/new`}>
               + New envelope
@@ -163,7 +169,12 @@ export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {
           Envelopes you deleted are hidden only for your organization. Recipients keep their copies. Restore an envelope to move it back.
         </p>
       ) : null}
-      <nav className="sg-tabs" aria-label="Envelope status" hidden={deleted}>
+      {userFolder !== undefined ? (
+        <h2 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 10px' }}>
+          Sent
+        </h2>
+      ) : null}
+      <nav className="sg-tabs" aria-label="Envelope status" hidden={deleted || userFolder !== undefined}>
         {TABS.map((t) => (
           <Link
             key={t.key}
@@ -226,7 +237,7 @@ export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {
                   <tr>
                     <td colSpan={7}>
                       <div className="sg-empty">
-                        <div className="sg-empty__t">{deleted ? 'Nothing in Deleted' : 'No envelopes here'}</div>
+                        <div className="sg-empty__t">{deleted ? 'Nothing in Deleted' : userFolder !== undefined ? 'No sent envelopes in this folder' : 'No envelopes here'}</div>
                         {q !== '' ? 'Try a different filter.' : null}
                       </div>
                     </td>
@@ -282,6 +293,17 @@ export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {
                           Restore
                         </LinkBtn>
                       ) : null}
+                      {/* SIGN-FREE-PARITY-1 S7 — into / out of one of the user's own folders. */}
+                      {!deleted ? (
+                        <LinkBtn
+                          aria-label={`Move ${e.subject} to a folder`}
+                          title="Move to folder"
+                          onClick={() => setMoving({ kind: 'sender', id: e.id, subject: e.subject, folder_id: e.folder_id ?? null })}
+                          data-testid={`move-to-folder-${e.id}`}
+                        >
+                          <Icon name="folder" />
+                        </LinkBtn>
+                      ) : null}
                       {!deleted && actions.delete ? (
                         <LinkBtn bad aria-label={`Delete ${e.subject}`} title="Delete" onClick={() => setPending({ row: e, action: 'delete' })} data-testid={`delete-${e.id}`}>
                           <Icon name="trash" />
@@ -314,6 +336,7 @@ export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {
           </div>
         </section>
       ) : null}
+      <MoveToFolderDialog target={moving} onClose={() => setMoving(null)} onDone={() => setReload((n) => n + 1)} toast={toast} />
       <Dialog
         open={pending !== null}
         onOpenChange={(o) => {

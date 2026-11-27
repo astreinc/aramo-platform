@@ -60,6 +60,8 @@ export interface SignUserDataCounts {
   settings: number;
   app_issue_reports: number;
   template_favorites: number;
+  // SIGN-FREE-PARITY-1 S7 — the user's own folders (their items go with them).
+  folders: number;
 }
 
 // C0-2 — formatSignDate / resolveSignerTimeZone live in the pure domain module (re-exported).
@@ -185,10 +187,11 @@ export class SignUserProfileRepository {
       settings: await this.prisma.signUserSettings.count({ where: owner }),
       app_issue_reports: await this.prisma.signAppIssueReport.count({ where: owner }),
       template_favorites: await this.prisma.signUserFavorite.count({ where: owner }),
+      folders: await this.prisma.signUserFolder.count({ where: { tenant_id, owner_user_id: user_id } }),
     };
   }
 
-  /** Every profile, settings, app-issue and favorite row of this user in this tenant. Idempotent; counts only. */
+  /** Every profile, settings, app-issue, favorite and folder row of this user in this tenant. Idempotent; counts only. */
   async removeAllForUser(tenant_id: string, user_id: string): Promise<SignUserDataCounts> {
     const owner = { tenant_id, user_id };
     return this.prisma.$transaction(async (tx) => ({
@@ -196,6 +199,8 @@ export class SignUserProfileRepository {
       settings: (await tx.signUserSettings.deleteMany({ where: owner })).count,
       app_issue_reports: (await tx.signAppIssueReport.deleteMany({ where: owner })).count,
       template_favorites: (await tx.signUserFavorite.deleteMany({ where: owner })).count,
+      // S7 — the folder rows; their items go by FK cascade (never an envelope).
+      folders: (await tx.signUserFolder.deleteMany({ where: { tenant_id, owner_user_id: user_id } })).count,
     }));
   }
 }

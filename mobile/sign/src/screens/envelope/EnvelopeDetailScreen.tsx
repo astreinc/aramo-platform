@@ -70,6 +70,8 @@ import {
 } from '../../features/inbox/queries';
 import { OPEN_STATUSES, type DetailRecipient, type LedgerEvent } from '../../features/inbox/types';
 import { EmptyState, ProgressBar, ReasonSheet, Segments } from '../../features/inbox/ui';
+import { MoveToFolderSheet } from '../../features/folders/FolderSheets';
+import type { FolderTarget } from '../../features/folders/foldersApi';
 import { sentShareTarget } from '../../features/share/shareCompleted';
 import { useSaveCopy, useShare } from '../../features/share/useShare';
 import type { EnvelopeDetailTab, RootStackParamList } from '../../navigation/types';
@@ -137,6 +139,8 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
   const services = useServices();
   const { workspace } = services;
   const [deleteBusy, setDeleteBusy] = useState(false);
+  // SIGN-FREE-PARITY-1 S7 — "Move to folder" (the user's own folders).
+  const [moving, setMoving] = useState<FolderTarget | null>(null);
   const online = useOnline();
   const recheckOnline = useRecheckOnline();
   const ctx = useSenderContext();
@@ -578,6 +582,13 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
             }
           />
         ) : null}
+        <Button
+          testID="action-move-to-folder"
+          title="Move to folder"
+          variant="text"
+          disabled={!online}
+          onPress={() => setMoving({ kind: 'sender', id: detail.id, subject: detail.subject, folderId: detail.folder_id ?? null })}
+        />
 
         <Segments items={TABS} value={tab} onChange={setTab} testIDPrefix="detail-tab" />
 
@@ -768,6 +779,7 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
         onConfirm={(r) => void doVoid(r)}
         onClose={() => setVoidOpen(false)}
       />
+      <MoveToFolderSheet target={moving} onClose={() => setMoving(null)} />
     </View>
   );
 }

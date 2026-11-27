@@ -100,6 +100,8 @@ import { TenantMembershipAdapter } from './billing/tenant-membership.adapter.js'
 import { IntegrationAdminController } from './integrations/integration-admin.controller.js';
 import { RecipientInboxController } from './inbox/recipient-inbox.controller.js';
 import { RecipientInboxService } from './inbox/recipient-inbox.service.js';
+import { SignFoldersController } from './folders/sign-folders.controller.js';
+import { SignFoldersService } from './folders/sign-folders.service.js';
 import { IntegrationAdminService } from './integrations/integration-admin.service.js';
 import { SignApiController, SignOAuthController } from './integrations/sign-api.controller.js';
 import { SignTalentErasureController, SignTalentErasureService } from './privacy/sign-talent-erasure.controller.js';
@@ -331,7 +333,7 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignSenderTemplateStudioController, EsignSenderReportsController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeSigningStatsController, SignMeNotificationsController, SignAppleRevokeController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignSmsInboundWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController, EsignSenderRegulatedController, EsignSignerQesController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignSenderTemplateStudioController, EsignSenderReportsController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignFoldersController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeSigningStatsController, SignMeNotificationsController, SignAppleRevokeController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignSmsInboundWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController, EsignSenderRegulatedController, EsignSignerQesController],
   providers: [
     NativeAramoSignatureProvider,
     // SIGN-FREE-PARITY-1 S4 — the automatic reminder sweep (needs the provider's dispatch). Off by default.
@@ -359,6 +361,7 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
     IntegrationAdminService,
     // Sign Unified Product S-7 — the recipient inbox.
     RecipientInboxService,
+    SignFoldersService,
     // DOC-TEMPLATE-LIB-1 T-5 — start an envelope from a Documents template.
     SignFeatureGate,
     // Feature-Parity §1.16 / §1.19 (Amendment A1) — QES and India e-stamp (dark).

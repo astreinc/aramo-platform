@@ -17,6 +17,7 @@ import {
 import { PURGE_LEVELS, errorMessage, fetchSourcePdf, isReminderStale, nextSendTime, purgeLevelLabel, senderApi, sourceLabel, type EnvelopeDetail as Detail, type Evidence, type LedgerEvent, type PurgeLevel } from '../api';
 import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, Loading, RecipientPill, Sel, StatusPill, TextIn, downloadBase64, eventDot, eventLabel, fmtDate, maskEmail, LinkBtn } from '../ui';
 import { useWorkspace } from '../workspace';
+import { MoveToFolderDialog, type FolderTarget } from '../folder-picker';
 
 // Envelope detail (read-only). Client Rule Consolidation C3 — every action button shows only
 // when the server's `actions` allows it (Send reminder, Void, Download documents and
@@ -53,6 +54,8 @@ export function EnvelopeDetail() {
   const [actionError, setActionError] = useState('');
   // UAT SND-14 — the clock the reminder rule reads; moved on when the soonest cooldown ends.
   const [now, setNow] = useState(() => Date.now());
+  // SIGN-FREE-PARITY-1 S7 — "Move to folder" (the user's own folders).
+  const [moving, setMoving] = useState<FolderTarget | null>(null);
 
   const load = useCallback(() => {
     senderApi
@@ -289,6 +292,9 @@ export function EnvelopeDetail() {
               Purge…
             </Btn>
           ) : null}
+          <Btn onClick={() => setMoving({ kind: 'sender', id: env.id, subject: env.subject, folder_id: env.folder_id ?? null })} disabled={busy} data-testid="move-to-folder">
+            <Icon name="folder" size={14} /> Move to folder
+          </Btn>
           {canDelete ? (
             <Btn onClick={() => setDeleteOpen(true)} disabled={busy} data-testid="delete-envelope">
               <Icon name="trash" size={14} /> Delete
@@ -498,6 +504,7 @@ export function EnvelopeDetail() {
           </section>
         </div>
       </div>
+      <MoveToFolderDialog target={moving} onClose={() => setMoving(null)} onDone={load} toast={toast} />
       <Dialog
         open={voidOpen}
         onOpenChange={(o) => {
