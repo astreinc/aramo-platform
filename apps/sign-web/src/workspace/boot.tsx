@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { configureAppBasePath, configureAuthConsumer } from '@aramo/fe-foundation';
 
 import { App } from './App';
+import { registerServiceWorker } from './pwa';
 import './styles.css';
 
 // Sign Unified Product S-2 — the workspace's web fonts. Loaded only by the
@@ -42,6 +43,7 @@ export function bootWorkspace(container: HTMLElement): void {
   reloadWhenRestoredFromCache();
   configureAppBasePath('');
   loadWorkspaceFonts();
+  registerServiceWorker(import.meta.env.PROD);
   createRoot(container).render(
     <StrictMode>
       <BrowserRouter>
