@@ -367,4 +367,19 @@ export { optionalMark, withOptionalMark, optionalSuffix } from './lib/optional-m
 // One rule for an envelope's email subject ("Please sign: …") on web, the app and the emails.
 export { SIGN_SUBJECT_PREFIX, subjectDocumentTitle, signatureRequestSubject } from './lib/envelope-subject.js';
 // UAT SND-14 — who a reminder reaches now and when the next one can go (web and the app).
-export { remindableNow, nextReminderAt, type ReminderRow } from './lib/reminders.js';
+export {
+  remindableNow,
+  nextReminderAt,
+  // SIGN-FREE-PARITY-1 S4 — automatic reminders: the one cadence (server and both apps) and copy.
+  AUTO_REMINDER_DAY_MS,
+  AUTO_REMINDER_CADENCE,
+  AUTO_REMINDER_SETTABLE_STATUSES,
+  AUTO_REMINDER_COPY,
+  canSetAutoReminders,
+  autoReminderDueAt,
+  autoReminderAfterSent,
+  autoReminderOnEnable,
+  autoReminderStatusLine,
+  type ReminderRow,
+  type AutoRemindersView,
+} from './lib/reminders.js';

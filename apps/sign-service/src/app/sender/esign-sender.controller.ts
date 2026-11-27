@@ -123,11 +123,26 @@ export class EsignSenderController {
     @AuthContext() auth: AuthContextType,
     @RequestId() requestId: string,
     @Param('id') id: string,
-    @Body() body: { subject?: unknown; routing_mode?: unknown; message?: unknown },
+    @Body() body: { subject?: unknown; routing_mode?: unknown; message?: unknown; allow_delegation?: unknown; auto_reminders_enabled?: unknown },
     @Res({ passthrough: true }) res: Response,
     @Headers('if-match') ifMatch?: string,
   ) {
     return this.withEtag(res, requestId, () => this.envelopes.update(auth, id, body, requestId, ifMatch));
+  }
+
+  // SIGN-FREE-PARITY-1 S4 (FP-R5) — turn automatic reminders on or off, while drafting or after
+  // sending (the PATCH above is DRAFT-only). The sender (or a Sign admin), with If-Match.
+  @Patch('envelopes/:id/reminders')
+  @EsignSenderBoundary(ESIGN_SEND_SCOPE)
+  setAutoReminders(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+    @Param('id') id: string,
+    @Body() body: { auto_reminders_enabled?: unknown },
+    @Res({ passthrough: true }) res: Response,
+    @Headers('if-match') ifMatch?: string,
+  ) {
+    return this.withEtag(res, requestId, () => this.envelopes.setAutoReminders(auth, id, body ?? {}, requestId, ifMatch));
   }
 
   // Sign Mobile D-W6-3 — delete a DRAFT (409 envelope_not_draft otherwise). The same

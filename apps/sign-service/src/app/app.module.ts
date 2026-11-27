@@ -72,6 +72,8 @@ import { eventPublisherFromEnv } from './sns-event-publisher.js';
 import { HttpWebhookEventPublisher } from './webhook-event-publisher.js';
 import { EsignDeliveryWorker } from './esign-delivery.worker.js';
 import { EsignExpiryWorker } from './esign-expiry.worker.js';
+// SIGN-FREE-PARITY-1 S4 — automatic reminders (default off: SIGN_AUTO_REMINDER_WORKER_ENABLED=1).
+import { EsignAutoReminderWorker } from './esign-auto-reminder.worker.js';
 import { SigningInvitationWorker } from './signing-invitation.worker.js';
 // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.18 — RFC 3161 trusted timestamps
 // (dark: SIGN_TSA_URL unset or sign.trusted_timestamp NOT_AVAILABLE ⇒ no adapter, no worker).
@@ -332,6 +334,8 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
   controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignSenderTemplateStudioController, EsignSenderReportsController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeSigningStatsController, SignMeNotificationsController, SignAppleRevokeController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignSmsInboundWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController, EsignSenderRegulatedController, EsignSignerQesController],
   providers: [
     NativeAramoSignatureProvider,
+    // SIGN-FREE-PARITY-1 S4 — the automatic reminder sweep (needs the provider's dispatch). Off by default.
+    EsignAutoReminderWorker,
     AramoSignAllowanceGate,
     // India Billing Regions + Razorpay §4.4 — the routing country, also read by the billing controller.
     BillingCountryAdapter,

@@ -1615,7 +1615,7 @@ paths:
           application/json:
             schema:
               type: object
-              description: At least one of subject, routing_mode, message or allow_delegation.
+              description: At least one of subject, routing_mode, message, allow_delegation or auto_reminders_enabled.
               properties:
                 subject:
                   type: string
@@ -1634,6 +1634,11 @@ paths:
                     Feature-Parity §1.17 — allow a signer to hand their signature to another person (DRAFT only; fixed at
                     send). true is refused 403 ESIGN_FEATURE_NOT_AVAILABLE while sign.delegate_signing is not available or
                     for a PERSONAL account (details.reason plan_not_eligible).
+                auto_reminders_enabled:
+                  type: boolean
+                  description: >-
+                    SIGN-FREE-PARITY-1 S4 — automatic reminders for this envelope (default true; all plans). After send,
+                    use PATCH /v1/sign/sender/envelopes/{id}/reminders.
       responses:
         '200':
           description: OK.
@@ -2416,6 +2421,60 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /v1/sign/sender/envelopes/{id}/reminders:
+    patch:
+      operationId: setSenderEnvelopeAutoReminders
+      summary: Turn automatic reminders on or off.
+      description: >
+        SIGN-FREE-PARITY-1 S4 (FP-R5). All plans. Works while drafting and after sending (DRAFT, SENT, IN_PROGRESS); a
+        finished envelope (COMPLETED, DECLINED, VOIDED, EXPIRED) is refused 409 ESIGN_REMINDER_NOT_ALLOWED (details.reason
+        envelope_closed), and a self-signed one 409 (details.reason self_sign_no_reminders). Requires sign:envelope:send,
+        plus ownership or sign:envelope:manage:all. The cadence: the first automatic reminder 2 days after sending, then
+        every 3 days, at most 5; each replaces the signer link like a sender reminder and counts against the same reminder
+        limits. Turned off, nothing more is planned; turned back on after sending, the next one is due on the cadence (or
+        straight away when that time has passed). If-Match is required for native tokens (428 precondition_required) and
+        enforced whenever sent (412 revision_mismatch).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [auto_reminders_enabled]
+              properties:
+                auto_reminders_enabled:
+                  type: boolean
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderEnvelopeDetail'
+          headers:
+            ETag:
+              $ref: '#/components/headers/EnvelopeETag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/RevisionMismatch'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
   /v1/sign/sender/envelopes/{id}/void:
     post:
       operationId: voidSenderEnvelope
@@ -10714,6 +10773,27 @@ components:
         os_version: { type: string, minLength: 1, maxLength: 50 }
         device_model: { type: string, minLength: 1, maxLength: 100 }
         screen: { type: [string, 'null'], maxLength: 100 }
+    SenderEnvelopeAutoReminders:
+      type: object
+      description: >-
+        SIGN-FREE-PARITY-1 S4 — automatic reminders: 2 days after sending, then every 3 days, at most 5 (all plans). They stop
+        when the envelope is completed, declined, voided or expires.
+      required: [enabled, sent_count, max_count, next_at]
+      properties:
+        enabled:
+          type: boolean
+          description: The sender's switch (default true; changeable while drafting and after sending).
+        sent_count:
+          type: integer
+          minimum: 0
+          maximum: 5
+        max_count:
+          type: integer
+          description: Automatic reminders per envelope, at most (5).
+        next_at:
+          type: [string, 'null']
+          format: date-time
+          description: When the next automatic reminder goes; null when none is planned (off, draft, closed, or all sent).
     SenderEnvelopeDetail:
       type: object
       required: [id, subject, status, documents, recipients, fields, editable]
@@ -10767,6 +10847,8 @@ components:
         allow_delegation:
           type: boolean
           description: Feature-Parity §1.17 — a signer may hand their signature to another person (set in DRAFT, fixed at send).
+        auto_reminders:
+          $ref: '#/components/schemas/SenderEnvelopeAutoReminders'
         mode:
           $ref: '#/components/schemas/SenderEnvelopeMode'
         can_self_sign_now:

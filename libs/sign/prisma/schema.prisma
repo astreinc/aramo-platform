@@ -80,6 +80,15 @@ model SignatureEnvelope {
   envelope_mode       String    @default("STANDARD")
   // M-A12 W1-E.2 — the sender's SIGN_DATE format, stamped at send (CHECK). NULL = MM/DD/YYYY.
   signer_date_format  String?
+  // SIGN-FREE-PARITY-1 S4 (migration 20261127110000) — automatic reminders. The sender's switch
+  // (default on; writable before and after send), how many went (CHECK 0..5), when the next one
+  // is due (NULL = none; partial index SignatureEnvelope_auto_reminder_due_idx for SENT /
+  // IN_PROGRESS, SQL only), and the send-time check verdict a system reminder reuses
+  // (CHECK ALLOWED | NOT_GATED; NULL = not recorded).
+  auto_reminders_enabled Boolean   @default(true)
+  auto_reminder_count    Int       @default(0)
+  next_auto_reminder_at  DateTime? @db.Timestamptz
+  send_risk_verdict      String?
 
   documents EnvelopeDocument[]
   signers   Signer[]

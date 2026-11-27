@@ -36,6 +36,8 @@ const ROOT = resolve(__dirname, '../../..');
 // ExecutedDocument migration (never hardcode a single-migration list). FIELD-PARITY-1 P3
 // (20261122200000_field_parity_1_p3_field_types_settings: new field types + setting columns;
 // additive response members on the sender detail and the signer view) is applied by this scan.
+// SIGN-FREE-PARITY-1 S4 (20261127110000_sign_free_parity_1_auto_reminders: automatic reminder
+// columns; the additive `auto_reminders` member on the sender detail) is applied by this scan too.
 function esignMigrations(): string[] {
   const dir = resolve(ROOT, 'libs/sign/prisma/migrations');
   return readdirSync(dir)

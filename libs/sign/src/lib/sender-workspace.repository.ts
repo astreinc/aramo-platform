@@ -562,6 +562,8 @@ export class EsignSenderRepository {
     message?: string | null;
     // Feature-Parity §1.17 — the sender allows a signer to delegate (DRAFT only).
     allow_delegation?: boolean;
+    // SIGN-FREE-PARITY-1 S4 — automatic reminders, set while drafting (after send: EsignService.setAutoReminders).
+    auto_reminders_enabled?: boolean;
     // M-A12 W1-E.2 — the sender's SIGN_DATE format, stamped at send.
     signer_date_format?: string;
     expected_revision?: number;
@@ -572,6 +574,7 @@ export class EsignSenderRepository {
         where: { id: input.envelope_id },
         data: {
           ...(input.allow_delegation !== undefined ? { allow_delegation: input.allow_delegation } : {}),
+          ...(input.auto_reminders_enabled !== undefined ? { auto_reminders_enabled: input.auto_reminders_enabled } : {}),
           ...(input.subject !== undefined ? { subject: input.subject } : {}),
           ...(input.execution_mode !== undefined ? { execution_mode: input.execution_mode } : {}),
           ...(input.routing_mode !== undefined ? { routing_mode: input.routing_mode } : {}),

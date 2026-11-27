@@ -370,6 +370,17 @@ export {
   type ReminderLimits,
   type ReminderHistoryEntry,
 } from './lib/reminder-limits.js';
+// SIGN-FREE-PARITY-1 S4 — automatic reminders (cadence from @aramo/sign-client, the send verdict).
+export {
+  AUTO_REMINDER_CADENCE,
+  SEND_RISK_VERDICTS,
+  autoReminderDueAt,
+  autoReminderAfterSent,
+  autoReminderOnEnable,
+  autoReminderVerdictAllows,
+  type SendRiskVerdict,
+  type AutoReminderOutcome,
+} from './lib/auto-reminders.js';
 export {
   SignIdempotencyRepository,
   SIGN_IDEMPOTENCY_TTL_MS,

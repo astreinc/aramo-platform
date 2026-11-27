@@ -53,6 +53,7 @@ import {
   inboxHandleKey,
   mintInboxHandle,
   SignUserProfileRepository,
+  type SendRiskVerdict,
 } from '@aramo/sign';
 import {
   selfSignTarget,
@@ -63,6 +64,8 @@ import {
   MAX_SIGNERS,
   SENDER_FIELD_TYPES,
   VOID_REASON_MAX,
+  AUTO_REMINDER_CADENCE,
+  canSetAutoReminders,
 } from '@aramo/sign-client';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
 import { checkboxGroupIssues, fieldConditionIssues, fieldTypesFor, fieldValueRefusal, isFieldKey, parseFieldSettings, senderFilledFieldsEnabled, FIELD_KEY_MAX, type FieldCondition, type FieldImportWarning } from '@aramo/sign-fields';
@@ -565,6 +568,14 @@ export class SenderEnvelopeService {
       next_signer_id: nextSignerId,
       // Feature-Parity §1.17 — whether a signer may delegate (set in DRAFT, fixed at send).
       allow_delegation: env.allow_delegation,
+      // SIGN-FREE-PARITY-1 S4 — automatic reminders: the sender's switch, how many went, and
+      // when the next one goes (only while signing is open and one is planned).
+      auto_reminders: {
+        enabled: env.auto_reminders_enabled,
+        sent_count: env.auto_reminder_count,
+        max_count: AUTO_REMINDER_CADENCE.max_count,
+        next_at: open && env.auto_reminders_enabled ? iso(env.next_auto_reminder_at) : null,
+      },
       // Aramo Sign Mobile M-A12 W1-A — standard | self, and whether the caller may "Sign now"
       // (open a self-sign session) on this envelope.
       mode: envelopeModeOf(env),
@@ -959,7 +970,13 @@ export class SenderEnvelopeService {
     return { name, email };
   }
 
-  async update(auth: AuthContextType, envelope_id: string, body: { subject?: unknown; routing_mode?: unknown; message?: unknown; allow_delegation?: unknown }, requestId: string, ifMatch?: string) {
+  async update(
+    auth: AuthContextType,
+    envelope_id: string,
+    body: { subject?: unknown; routing_mode?: unknown; message?: unknown; allow_delegation?: unknown; auto_reminders_enabled?: unknown },
+    requestId: string,
+    ifMatch?: string,
+  ) {
     await this.context.assertCanAuthor(auth, requestId);
     const expected = expectedRevision(auth, ifMatch, envelope_id, requestId);
     await this.assertMayChange(auth, envelope_id, requestId);
@@ -969,7 +986,14 @@ export class SenderEnvelopeService {
     const hasMessage = body?.message !== undefined;
     // Feature-Parity §1.17 — the sender allows delegation (Business and up; dark until flipped).
     const hasDelegation = body?.allow_delegation !== undefined;
-    if (!hasSubject && !hasRouting && !hasMessage && !hasDelegation) throw bad(requestId, 'subject, routing_mode, message or allow_delegation is required');
+    // SIGN-FREE-PARITY-1 S4 — automatic reminders while drafting (default on; all plans).
+    const hasAutoReminders = body?.auto_reminders_enabled !== undefined;
+    if (!hasSubject && !hasRouting && !hasMessage && !hasDelegation && !hasAutoReminders) {
+      throw bad(requestId, 'subject, routing_mode, message, allow_delegation or auto_reminders_enabled is required');
+    }
+    if (hasAutoReminders && typeof body.auto_reminders_enabled !== 'boolean') {
+      throw bad(requestId, 'auto_reminders_enabled must be true or false', { field: 'auto_reminders_enabled' });
+    }
     if (hasDelegation) {
       if (typeof body.allow_delegation !== 'boolean') throw bad(requestId, 'allow_delegation must be true or false', { field: 'allow_delegation' });
       if (body.allow_delegation) await this.assertBusinessFeature(auth, SIGN_DELEGATE_SIGNING_FEATURE, requestId);
@@ -990,8 +1014,30 @@ export class SenderEnvelopeService {
       ...(hasRouting ? { routing_mode: body.routing_mode as string } : {}),
       ...(message !== undefined ? { message } : {}),
       ...(hasDelegation ? { allow_delegation: body.allow_delegation as boolean } : {}),
+      ...(hasAutoReminders ? { auto_reminders_enabled: body.auto_reminders_enabled as boolean } : {}),
       ...(expected !== undefined ? { expected_revision: expected } : {}),
     });
+    return this.detail(auth, envelope_id, requestId);
+  }
+
+  // SIGN-FREE-PARITY-1 S4 (FP-R5) — turn automatic reminders on or off while drafting or after
+  // sending (PATCH envelopes/:id/reminders). The same authority and If-Match rule as void; a
+  // closed envelope (completed, declined, voided, expired) or a self-signed one is refused.
+  async setAutoReminders(auth: AuthContextType, envelope_id: string, body: { auto_reminders_enabled?: unknown }, requestId: string, ifMatch?: string) {
+    await this.context.assertCanAuthor(auth, requestId);
+    const expected = expectedRevision(auth, ifMatch, envelope_id, requestId);
+    await this.assertMayChange(auth, envelope_id, requestId);
+    const enabled = body?.auto_reminders_enabled;
+    if (typeof enabled !== 'boolean') throw bad(requestId, 'auto_reminders_enabled must be true or false', { field: 'auto_reminders_enabled' });
+    const env = await this.repo.getEnvelopeDetail(auth.tenant_id, envelope_id);
+    enforce(remindModeRefusal(env), requestId);
+    if (!canSetAutoReminders({ status: env.status })) {
+      throw new AramoError('ESIGN_REMINDER_NOT_ALLOWED', 'Automatic reminders can be changed only before the envelope is finished', 409, {
+        requestId,
+        details: { reason: 'envelope_closed', status: env.status },
+      });
+    }
+    await this.provider.setAutoReminders(auth.tenant_id, envelope_id, enabled, expected !== undefined ? { expected_revision: expected } : {});
     return this.detail(auth, envelope_id, requestId);
   }
 
@@ -1598,7 +1644,11 @@ export class SenderEnvelopeService {
       ...(expected !== undefined ? { expected_revision: expected } : {}),
     });
     if (expected !== undefined) expected = rev;
-    await this.provider.sendEnvelope(auth.tenant_id, envelope_id, auth.sub, undefined, expected !== undefined ? { expected_revision: expected } : {});
+    // SIGN-FREE-PARITY-1 S4 (FP-R5) — the send-time check verdict, recorded on the envelope for
+    // its automatic reminders (a system reminder has no IP and is never re-checked). A Personal
+    // send reached here only because the check above passed; Business sends are not checked.
+    const send_verdict: SendRiskVerdict = tenant.kind === 'PERSONAL' ? 'ALLOWED' : 'NOT_GATED';
+    await this.provider.sendEnvelope(auth.tenant_id, envelope_id, auth.sub, undefined, { auto_reminders: { send_verdict }, ...(expected !== undefined ? { expected_revision: expected } : {}) });
     // M-A3 §5 — the sender's saved contacts for these recipients were just used.
     await this.contactStore?.touchUsed(auth.tenant_id, auth.sub, d.recipients.flatMap((r) => (r.email === null ? [] : [r.email]))).catch(() => undefined);
     return this.detail(auth, envelope_id, requestId);

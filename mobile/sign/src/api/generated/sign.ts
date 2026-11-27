@@ -959,6 +959,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/sender/envelopes/{id}/reminders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Turn automatic reminders on or off.
+         * @description SIGN-FREE-PARITY-1 S4 (FP-R5). All plans. Works while drafting and after sending (DRAFT, SENT, IN_PROGRESS); a finished envelope (COMPLETED, DECLINED, VOIDED, EXPIRED) is refused 409 ESIGN_REMINDER_NOT_ALLOWED (details.reason envelope_closed), and a self-signed one 409 (details.reason self_sign_no_reminders). Requires sign:envelope:send, plus ownership or sign:envelope:manage:all. The cadence: the first automatic reminder 2 days after sending, then every 3 days, at most 5; each replaces the signer link like a sender reminder and counts against the same reminder limits. Turned off, nothing more is planned; turned back on after sending, the next one is due on the cadence (or straight away when that time has passed). If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
+         */
+        patch: operations["setSenderEnvelopeAutoReminders"];
+        trace?: never;
+    };
     "/v1/sign/sender/envelopes/{id}/void": {
         parameters: {
             query?: never;
@@ -5159,6 +5179,19 @@ export interface components {
             device_model: string;
             screen?: string | null;
         };
+        /** @description SIGN-FREE-PARITY-1 S4 — automatic reminders: 2 days after sending, then every 3 days, at most 5 (all plans). They stop when the envelope is completed, declined, voided or expires. */
+        SenderEnvelopeAutoReminders: {
+            /** @description The sender's switch (default true; changeable while drafting and after sending). */
+            enabled: boolean;
+            sent_count: number;
+            /** @description Automatic reminders per envelope, at most (5). */
+            max_count: number;
+            /**
+             * Format: date-time
+             * @description When the next automatic reminder goes; null when none is planned (off, draft, closed, or all sent).
+             */
+            next_at: string | null;
+        };
         SenderEnvelopeDetail: {
             /** Format: uuid */
             id: string;
@@ -5190,6 +5223,7 @@ export interface components {
             next_signer_id?: string | null;
             /** @description Feature-Parity §1.17 — a signer may hand their signature to another person (set in DRAFT, fixed at send). */
             allow_delegation?: boolean;
+            auto_reminders?: components["schemas"]["SenderEnvelopeAutoReminders"];
             mode?: components["schemas"]["SenderEnvelopeMode"];
             /** @description Aramo Sign Mobile M-A12 W1-A.4 — true when the caller may open a self-sign session on this envelope now (a signing recipient bound to them, still to sign, their turn, an Aramo Sign envelope they may act on, and sign:envelope:send). Drives "Sign now"; POST /v1/sign/sender/envelopes/{id}/self-sign-session re-checks everything, including the verified email. */
             can_self_sign_now?: boolean;
@@ -7422,6 +7456,8 @@ export interface operations {
                     message?: string | null;
                     /** @description Feature-Parity §1.17 — allow a signer to hand their signature to another person (DRAFT only; fixed at send). true is refused 403 ESIGN_FEATURE_NOT_AVAILABLE while sign.delegate_signing is not available or for a PERSONAL account (details.reason plan_not_eligible). */
                     allow_delegation?: boolean;
+                    /** @description SIGN-FREE-PARITY-1 S4 — automatic reminders for this envelope (default true; all plans). After send, use PATCH /v1/sign/sender/envelopes/{id}/reminders. */
+                    auto_reminders_enabled?: boolean;
                 };
             };
         };
@@ -7993,6 +8029,46 @@ export interface operations {
             403: components["responses"]["SenderForbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    setSenderEnvelopeAutoReminders: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The envelope's last-read ETag "{envelope_id}.{revision}". Required for native (mobile) tokens on draft writes, send and void (428 precondition_required); enforced whenever sent (412 revision_mismatch, details.current_revision). */
+                "If-Match"?: components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    auto_reminders_enabled: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["EnvelopeETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderEnvelopeDetail"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["RevisionMismatch"];
+            428: components["responses"]["PreconditionRequired"];
         };
     };
     voidSenderEnvelope: {
