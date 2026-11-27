@@ -3768,7 +3768,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EnvelopeSummary'
+                $ref: '#/components/schemas/SignApiCreatedEnvelope'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -11144,6 +11144,13 @@ components:
         field_import:
           $ref: '#/components/schemas/SenderFieldImport'
           description: FIELD-PARITY-1 P2-5 / P2-6 — present only on an upload sent with import_fields or apply_text_tags.
+        attachments_removed:
+          type: integer
+          minimum: 1
+          description: >-
+            PDF-ATTACH-1 ATT-6 — present only when attached files (embedded files, associated files, file-attachment
+            annotations, a portfolio) were removed from the uploaded PDF; the stored document is the one without them.
+            A PDF without attached files is stored byte-for-byte as uploaded.
     SenderFieldImport:
       type: object
       additionalProperties: false
@@ -11680,6 +11687,18 @@ components:
                 type: number
               required:
                 type: boolean
+    SignApiCreatedEnvelope:
+      description: The envelope summary, plus PDF-ATTACH-1 ATT-6's count when any uploaded PDF had attached files removed.
+      allOf:
+        - $ref: '#/components/schemas/EnvelopeSummary'
+        - type: object
+          properties:
+            attachments_removed:
+              type: integer
+              minimum: 1
+              description: >-
+                PDF-ATTACH-1 — present only when attached files (embedded files, associated files, file-attachment
+                annotations, a portfolio) were removed from the uploaded PDFs, summed over the documents.
     EnvelopeSummary:
       type: object
       required:

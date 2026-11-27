@@ -271,6 +271,7 @@ export class SignApiService {
       | { kind: 'reference'; document_ref: string; document_revision_ref: string; title: string; source_sha256: string; ordinal: number }
       | { kind: 'upload'; bytes: Uint8Array; title: string; filename: string; ordinal: number; pages: { width: number; height: number }[] };
     const docs: Doc[] = [];
+    let attachmentsRemoved = 0;
     for (const [i, raw] of (body.documents as unknown[]).entries()) {
       const o = (raw ?? {}) as Record<string, unknown>;
       const title = (typeof o['title'] === 'string' && o['title'].trim() !== '' ? o['title'].trim() : `Document ${i + 1}`).slice(0, MAX_TITLE);
@@ -287,7 +288,10 @@ export class SignApiService {
         if (typeof o['content_base64'] !== 'string' || o['content_base64'].length === 0) throw bad(requestId, `document ${i + 1}: content_base64 (a PDF) is required`, { index: i });
         let accepted: Uint8Array;
         try {
-          accepted = await this.safePdf.accept(new Uint8Array(Buffer.from(o['content_base64'], 'base64')));
+          // PDF-ATTACH-1 ATT-2 — attached files are removed before the gate.
+          const out = await this.safePdf.acceptRemovingAttachments(new Uint8Array(Buffer.from(o['content_base64'], 'base64')));
+          accepted = out.bytes;
+          attachmentsRemoved += out.attachments_removed;
         } catch (e) {
           if (e instanceof UnsafePdfError) throw bad(requestId, `document ${i + 1} can't be used: ${e.message}`, { index: i, reason: 'unsafe_pdf', pdf_problem: e.problem });
           throw e;
@@ -382,7 +386,9 @@ export class SignApiService {
     if (fields.length > 0) {
       for (const field of resolveAndValidateFields(auth.tenant_id, fields, createdDocs, createdSigners)) await this.repo.addField(field);
     }
-    if (body.send === true) return this.provider.sendEnvelope(auth.tenant_id, env.id, auth.sub);
-    return this.provider.getEnvelope(auth.tenant_id, env.id);
+    const summary = body.send === true ? await this.provider.sendEnvelope(auth.tenant_id, env.id, auth.sub) : await this.provider.getEnvelope(auth.tenant_id, env.id);
+    // PDF-ATTACH-1 ATT-6 — the envelope summary carries no document list, so the count of
+    // attached files removed across the uploaded documents is one optional member (only ≥ 1).
+    return attachmentsRemoved > 0 ? { ...summary, attachments_removed: attachmentsRemoved } : summary;
   }
 }
