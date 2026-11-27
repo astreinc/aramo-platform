@@ -3,6 +3,7 @@
 // its document through the Send flow controller.
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { STORAGE_FULL } from '@aramo/sign-client';
 import { useSyncExternalStore } from 'react';
 
 import type { AppServices } from '../../../app/services';
@@ -14,7 +15,8 @@ import {
   FILES_NOTE,
   SOURCE_UNAVAILABLE,
 } from '../../../features/send/AddDocumentsSheet';
-import type { SenderApi } from '../../../features/send/senderApi';
+import { fakeSenderServer } from '../../../features/send/__tests__/fakeSenderServer';
+import { createSenderApi } from '../../../features/send/senderApi';
 import { SendFlowController } from '../../../features/send/sendFlowController';
 import { createDraftStore } from '../../../state/draftStore';
 import { createEncryptedStore } from '../../../state/encryptedStore';
@@ -39,16 +41,19 @@ jest.mock('../../../features/send/sources', () => ({
   pickPdf: () => mockPick(),
 }));
 
-function controller() {
+// Online, a PDF is uploaded as it is added (UAT DOC-06), so the controller talks to a fake server.
+function controller(opts: { readonly storageFull?: boolean } = {}) {
   const store = createEncryptedStore({ kv: memoryKv(), cipher: nodeAesGcm, files: memoryFiles() });
+  const server = fakeSenderServer(opts);
   let n = 0;
   return new SendFlowController({
     drafts: createDraftStore(store),
     bytes: createDocumentBytesStore(store),
-    api: {} as SenderApi,
+    api: createSenderApi(server.workspace),
     fetchSource: async () => PDF,
     isOnline: () => true,
     newId: () => `id-${String(++n).padStart(8, '0')}`,
+    sleep: async () => undefined,
   });
 }
 
@@ -169,6 +174,22 @@ describe('Step 1 with the sheet', () => {
       fireEvent.press(screen.getByLabelText('Files'));
     });
     expect(await screen.findByText('Only PDF files can be sent for signature.')).toBeTruthy();
+    expect(c.snapshot.draft!.payload.documents).toHaveLength(0);
+  });
+
+  // UAT DOC-06 — online, a PDF past the plan's storage is refused here, not at Review.
+  it('storage full: the sheet stays open with the shared words and the document is not kept', async () => {
+    const c = controller({ storageFull: true });
+    await c.open();
+    const onPicked = jest.fn();
+    mockPick.mockResolvedValue({ kind: 'document', title: 'Lease', filename: 'Lease.pdf', bytes: PDF });
+    renderStep(c, { onPicked });
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Files'));
+    });
+    expect(await screen.findByText(STORAGE_FULL)).toBeTruthy();
+    expect(screen.getByRole('header', { name: 'Add documents' })).toBeTruthy();
+    expect(onPicked).not.toHaveBeenCalled();
     expect(c.snapshot.draft!.payload.documents).toHaveLength(0);
   });
 });

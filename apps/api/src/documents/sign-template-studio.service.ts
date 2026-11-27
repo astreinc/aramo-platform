@@ -257,6 +257,12 @@ export class SignTemplateStudioService {
     await this.d.tenantTemplates.deleteDraft(await this.studio(input, 'author'), input.version_id, input.requestId);
   }
 
+  // Sign Field-Test Batch 1 F15-1 — the version's field rows, through the SAME tenant read
+  // Org Home uses (tenant-scoped; the live-grant principal applies).
+  async listFields(input: { tenant_id: string; actor_id: string; version_id: string; requestId: string }) {
+    return this.d.tenantTemplates.listFields(await this.studio(input, 'read'), input.version_id, input.requestId);
+  }
+
   async previewVersion(input: { tenant_id: string; actor_id: string; version_id: string; requestId: string }) {
     return this.d.tenantTemplates.previewVersion(await this.studio(input, 'author'), input.version_id, input.requestId);
   }

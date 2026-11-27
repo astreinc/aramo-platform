@@ -44,6 +44,20 @@ export {
   type ProfileTextFieldType,
   type FieldRuleViolation,
 } from './lib/field-rules.js';
+// Field-test batch 1 SIG-11 (+A1) — profile values on the signing page (server, sign-web, app).
+export {
+  PROFILE_OFFER_COPY,
+  SENDER_HELD_PREFILL_TYPES,
+  profilePrefill,
+  isPrefillTarget,
+  profileOfferFor,
+  profileOffers,
+  senderHeldPrefills,
+  type ProfilePrefill,
+  type ProfilePrefillSource,
+  type PrefillFieldLike,
+  type PrefillMatch,
+} from './lib/profile-prefill.js';
 // FIELD-PARITY-2 B-4 — the one visibility rule (server, sign-web and the app).
 export {
   fieldConditionOf,
@@ -352,3 +366,5 @@ export {
 export { optionalMark, withOptionalMark, optionalSuffix } from './lib/optional-mark.js';
 // One rule for an envelope's email subject ("Please sign: …") on web, the app and the emails.
 export { SIGN_SUBJECT_PREFIX, subjectDocumentTitle, signatureRequestSubject } from './lib/envelope-subject.js';
+// UAT SND-14 — who a reminder reaches now and when the next one can go (web and the app).
+export { remindableNow, nextReminderAt, type ReminderRow } from './lib/reminders.js';

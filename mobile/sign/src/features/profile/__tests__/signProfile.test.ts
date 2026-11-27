@@ -49,6 +49,11 @@ describe('profile', () => {
     expect(profileValue('TITLE', p, null)).toBe('Recruiter');
     expect(profileValue('TEXT', p, null)).toBeNull();
     expect(profileValue('COMPANY', null, null)).toBeNull();
+    // Field-test batch 1 SIG-6 — the one shared rule (@aramo/sign-client profilePrefill): the
+    // signer-name field is never filled (M-A6, D-3); a single word is the first name only.
+    expect(profileValue('SIGNER_NAME', p, null)).toBeNull();
+    expect(profileValue('FIRST_NAME', { display_name: 'Priya' }, null)).toBe('Priya');
+    expect(profileValue('LAST_NAME', { display_name: 'Priya' }, null)).toBeNull();
   });
 
   it('GET /v1/sign/me/profile; 404 = no profile yet', async () => {

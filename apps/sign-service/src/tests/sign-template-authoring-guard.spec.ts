@@ -53,7 +53,10 @@ const TEMPLATE_SYNC_1_ROUTES = [
   'POST v1/sign/sender/templates/studio/:id/draft-from-master',
   'POST v1/sign/sender/templates/studio/:id/keep-version',
 ];
-const ALLOWED = new Set([...USE_ROUTES, ...TEMPLATE_PRODUCT_1_ROUTES, ...M_A12_FAVORITE_ROUTES, ...TEMPLATE_SYNC_1_ROUTES]);
+// Sign Field-Test Batch 1 (Directive v1.0 LOCKED) F15-2 — the Personal Studio's read of a
+// version's field rows (labels for the locked chips). A read-only pass-through; Sign stores nothing.
+const FIELD_TEST_BATCH_1_ROUTES = ['GET v1/sign/sender/templates/studio/versions/:versionId/fields'];
+const ALLOWED = new Set([...USE_ROUTES, ...TEMPLATE_PRODUCT_1_ROUTES, ...M_A12_FAVORITE_ROUTES, ...TEMPLATE_SYNC_1_ROUTES, ...FIELD_TEST_BATCH_1_ROUTES]);
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];

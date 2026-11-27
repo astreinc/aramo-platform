@@ -58,9 +58,12 @@ describe('upload options (FIELD-PARITY-2 A-3)', () => {
   it('a chosen option goes with the upload; an unchosen one is never sent', async () => {
     const t = setup();
     await t.c.open();
+    // Offline, so both wait for upload (online, a PDF is uploaded as it is added; UAT DOC-06).
+    t.setOnline(false);
     await t.c.addDocument({ title: 'Plain', filename: 'Plain.pdf', bytes: PDF });
     t.c.setUploadOptions({ importFields: false, applyTextTags: true });
     await t.c.addDocument({ title: 'Tagged', filename: 'Tagged.pdf', bytes: PDF });
+    t.setOnline(true);
     const docs = t.c.snapshot.draft!.payload.documents;
     // A pending document follows the options until it is uploaded.
     expect(docs.map((d) => d.pendingUpload && { i: d.pendingUpload.importFields, t: d.pendingUpload.applyTextTags })).toEqual([
@@ -81,7 +84,9 @@ describe('upload options (FIELD-PARITY-2 A-3)', () => {
     const t = setup();
     await preparedWithImport(t.c);
     expect(await t.c.sync()).toBe(true);
-    expect(writes(t.server.calls).map(path)).toEqual(['POST ', 'PUT /recipients', 'POST /documents', 'PATCH ', 'PUT /fields']);
+    // Adding the document online created the envelope (UAT DOC-06); its opted-in upload waited
+    // for a signing recipient, so the recipients still go before it.
+    expect(writes(t.server.calls).map(path)).toEqual(['POST ', 'PATCH ', 'PUT /recipients', 'POST /documents', 'PUT /fields']);
     // The local field and both server-made fields, with their settings.
     const put = lastFieldsPut(t.server.calls);
     expect(put.map((f) => f['field_type'])).toEqual(['INITIALS', 'TEXT', 'SIGNATURE']);

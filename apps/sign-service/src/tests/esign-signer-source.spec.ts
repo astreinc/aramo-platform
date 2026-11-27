@@ -46,7 +46,8 @@ describe('EsignSignerController F3 — source + document routes', () => {
 
     // B3 — can_delegate is false unless the engine says so and delegate signing is available.
     // M-A15 / M-A16 — without the saved-marks service: no saved marks, no inbox save.
-    expect(res).toEqual({ ...view, can_delegate: false, saved_marks: null, inbox_save_available: false });
+    // SIG-11 — without the profile pre-fill service: no profile values.
+    expect(res).toEqual({ ...view, can_delegate: false, saved_marks: null, inbox_save_available: false, profile_prefill: null });
     expect(port.getSourcePdf).not.toHaveBeenCalled();
     expect(JSON.stringify(res)).not.toContain(TENANT);
   });

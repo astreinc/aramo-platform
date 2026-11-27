@@ -23,6 +23,13 @@ describe('refusal copy (row 29)', () => {
     ['seats below usage', { code: 'ESIGN_BILLING_CONFLICT', details: { reason: 'seats_below_usage', used: 4 } }, '4 people are using seats, so you need at least 4 seats. Remove someone’s Aramo Sign access first to go lower.'],
     ['billing conflict, no reason', { code: 'ESIGN_BILLING_CONFLICT', status: 409 }, 'Your organization can’t subscribe right now. Check Settings, or contact Aramo.'],
     ['self-sign: not bound', { code: 'ENVELOPE_ILLEGAL_TRANSITION', reason: 'not_bound_to_you' }, 'This signer isn’t assigned to you. Use the link in the signing email.'],
+    // A2 SGN-2 — every session refusal says why (never the generic ENVELOPE_ILLEGAL_TRANSITION text).
+    ['session: not signable', { code: 'ENVELOPE_ILLEGAL_TRANSITION', details: { reason: 'envelope_not_signable' } }, 'This envelope can’t be signed any more.'],
+    ['session: signer ineligible', { code: 'ENVELOPE_ILLEGAL_TRANSITION', details: { reason: 'signer_ineligible' } }, 'You can no longer sign this envelope.'],
+    ['session: not your turn', { code: 'SIGNER_NOT_YET_ELIGIBLE', details: { reason: 'not_your_turn' } }, 'It’s not your turn to sign yet. You’ll get an email when it is.'],
+    ['session: not in person', { code: 'ENVELOPE_ILLEGAL_TRANSITION', details: { reason: 'not_in_person_signer' } }, 'Only an in-person signer can sign on this device.'],
+    ['session: signer not found', { code: 'SIGNER_NOT_FOUND', status: 404, details: { reason: 'signer_not_found' } }, 'That recipient is no longer on this envelope.'],
+    ['illegal transition, no reason (fallback)', { code: 'ENVELOPE_ILLEGAL_TRANSITION' }, 'This envelope can’t be changed in its current state.'],
   ])('%s', (_n, e, copy) => {
     expect(refusalMessage(e, fmt)).toBe(copy);
   });

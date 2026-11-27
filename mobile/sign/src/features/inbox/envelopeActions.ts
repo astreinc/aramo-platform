@@ -8,7 +8,9 @@
 //   View certificate   — actions.certificate
 //   Host in person     — each recipient's server `hostable`
 import {
+  nextReminderAt as sharedNextReminderAt,
   refusalMessage as sharedRefusal,
+  remindableNow,
   senderActionsOf,
   voidReasonProblem,
   SELF_SIGN_NO_REMINDERS as SHARED_SELF_SIGN_NO_REMINDERS,
@@ -50,25 +52,20 @@ export function hostableSigners(detail: SenderEnvelopeDetail, enabled: boolean):
   return detail.recipients.filter((r) => (r as { hostable?: boolean }).hostable === true);
 }
 
-/** Signers a reminder would reach now (server flags `can_remind` + no pending cooldown). */
+/**
+ * Signers a reminder would reach now (server flags `can_remind` + no pending cooldown). UAT SND-14:
+ * the rule lives in @aramo/sign-client (remindableNow), shared with sign-web.
+ */
 export function remindableSigners(
   detail: SenderEnvelopeDetail,
   now: number = Date.now(),
 ): DetailRecipient[] {
-  return detail.recipients.filter(
-    (r) =>
-      r.can_remind &&
-      (r.reminder_available_at === null || Date.parse(r.reminder_available_at) <= now),
-  );
+  return remindableNow(detail.recipients, now);
 }
 
-/** The earliest time a reminder becomes possible when every remindable signer is cooling down. */
+/** The earliest time a reminder becomes possible (@aramo/sign-client nextReminderAt, shared with sign-web). */
 export function nextReminderAt(detail: SenderEnvelopeDetail): string | null {
-  const times = detail.recipients
-    .filter((r) => r.can_remind && r.reminder_available_at)
-    .map((r) => r.reminder_available_at as string)
-    .sort();
-  return times[0] ?? null;
+  return sharedNextReminderAt(detail.recipients);
 }
 
 export function remindLabel(signers: readonly DetailRecipient[]): string {

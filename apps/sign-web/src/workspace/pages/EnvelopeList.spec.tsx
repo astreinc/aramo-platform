@@ -192,6 +192,31 @@ describe('Envelope list — Waiting for you', () => {
     vi.unstubAllGlobals();
   });
 
+  it('A2 SGN-1 — Sign and Delete sit in one no-wrap actions row with a gap', async () => {
+    list.mockResolvedValue({ items: [open('me', { awaiting_you: true, actions: acts('sign', 'void') })], counts: { SENT: 1 } });
+    show();
+    const rowActions = await screen.findByTestId('row-actions-me');
+    expect(rowActions).toContainElement(screen.getByTestId('sign-me'));
+    expect(rowActions).toContainElement(screen.getByTestId('delete-disabled-me'));
+    expect(rowActions.style.display).toBe('inline-flex');
+    expect(rowActions.style.flexWrap).toBe('nowrap');
+    expect(rowActions.style.gap).toBe('8px');
+    expect((rowActions.parentElement as HTMLElement).style.whiteSpace).toBe('nowrap');
+  });
+
+  it('A2 SGN-2/SGN-3 — a refused Sign says why and reloads the list, so the stale Sign goes away', async () => {
+    list
+      .mockResolvedValueOnce({ items: [open('me', { awaiting_you: true, actions: acts('sign') })], counts: { SENT: 1 } })
+      .mockResolvedValue({ items: [open('me', { awaiting_you: true, actions: acts() })], counts: { SENT: 1 } });
+    selfSign.mockRejectedValue(new ApiError(409, 'This document can no longer be signed', 'ENVELOPE_ILLEGAL_TRANSITION', { reason: 'envelope_not_signable' }));
+    show();
+    fireEvent.click(await screen.findByTestId('sign-me'));
+    await waitFor(() => expect(toast).toHaveBeenCalledWith('This envelope can’t be signed any more.'));
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByTestId('sign-me')).toBeNull());
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
   it('C3 — awaiting_you without the server’s actions.sign shows the label but no Sign (row 1)', async () => {
     list.mockResolvedValue({ items: [open('me', { awaiting_you: true, my_inbox_item_id: null })], counts: { SENT: 1 } });
     show();

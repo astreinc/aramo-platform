@@ -126,6 +126,24 @@ describe('§8.3 — the Studio is PERSONAL-only; Sign stores nothing', () => {
     expect(biz.port.call).not.toHaveBeenCalled();
   });
 
+  // Sign Field-Test Batch 1 F15-2 — a version's field rows: one GET pass-through (PERSONAL-only),
+  // the bare array returned unchanged (the chips read type, label and role from it).
+  it('F15-2: the version field rows — one S2S GET, the bare array unchanged; BUSINESS refused, a bad id never sent', async () => {
+    const rows = [{ field_key: 'sig_1', field_type: 'SIGNATURE', label: 'Employee signature', signer_role: 'Signer 1', required: true, ordinal: 0 }];
+    const h = harness({ answer: rows });
+    expect(await h.svc.listFields(auth(), VERSION, 'r')).toEqual(rows);
+    const calls = vi.mocked(h.port.call).mock.calls.map(([c]) => ({ method: c.method, path: c.path, query: c.query, body: c.body }));
+    expect(calls).toEqual([{ method: 'GET', path: `/studio/versions/${VERSION}/fields`, query: { tenant_id: TENANT, actor_id: USER }, body: undefined }]);
+    const biz = harness({ kind: 'BUSINESS' });
+    await expect(biz.svc.listFields(auth(), VERSION, 'r')).rejects.toMatchObject({ statusCode: 403, context: { details: { reason: 'organization_templates_in_org_home' } } });
+    const dark = harness({ registry: DARK });
+    await expect(dark.svc.listFields(auth(), VERSION, 'r')).rejects.toMatchObject({ code: 'ESIGN_FEATURE_NOT_AVAILABLE' });
+    await expect(h.svc.listFields(auth(), 'not-a-uuid', 'r')).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
+    expect(biz.port.call).not.toHaveBeenCalled();
+    expect(dark.port.call).not.toHaveBeenCalled();
+    expect(h.port.call).toHaveBeenCalledTimes(1);
+  });
+
   it('a malformed id is refused before any call', async () => {
     const h = harness();
     await expect(h.svc.get(auth(), 'not-a-uuid', 'r')).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
@@ -170,7 +188,8 @@ describe('§8.5 — the gallery and "Use as it is" (every tenant kind)', () => {
     const own = Object.getOwnPropertyNames(EsignSenderTemplateStudioController.prototype).filter((n) => n !== 'constructor' && n !== 'run');
     expect(own.sort()).toEqual(
       // TEMPLATE-SYNC-1 S-5 / S-7 / S-8 — + master, draftFromMaster, keepVersion.
-      ['gallery', 'galleryPreview', 'adoptAndUse', 'list', 'adopt', 'get', 'rename', 'versions', 'createVersion', 'createDraft', 'allowedBindings', 'updateVersion', 'discardDraft', 'preview', 'activate', 'master', 'draftFromMaster', 'keepVersion'].sort(),
+      // Sign Field-Test Batch 1 F15-2 — + listFields.
+      ['gallery', 'galleryPreview', 'adoptAndUse', 'list', 'adopt', 'get', 'rename', 'versions', 'createVersion', 'createDraft', 'allowedBindings', 'updateVersion', 'discardDraft', 'preview', 'activate', 'master', 'draftFromMaster', 'keepVersion', 'listFields'].sort(),
     );
   });
 });

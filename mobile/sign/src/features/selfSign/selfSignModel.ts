@@ -6,6 +6,7 @@ import {
   checkboxGroupOf,
   fieldValueDisplay,
   isSignerLocked,
+  profilePrefill,
   radioChoiceClearable,
   signerFieldUnits,
   type FieldOptions,
@@ -16,7 +17,7 @@ import type { DateFormat, SignProfile } from '../../api/m-a12-contract-types';
 import type { EditorField } from '../editor/editorReducer';
 import { FIELD_TYPE_SPECS, isProfileFieldType } from '../editor/fieldTypes';
 import { editorToWire, type PageSize } from '../editor/geometry';
-import { formatDate, profileValue } from '../profile/signProfile';
+import { formatDate } from '../profile/signProfile';
 import { ACK_TEXT, RADIO_MARK, type AdoptedMark, type SigningField } from '../signing/signingMachine';
 
 /** The one recipient key the editor uses for the caller. */
@@ -131,12 +132,16 @@ function profileOrFallback(ctx: SelfContext): SignProfile | null {
   return name ? { ...(ctx.profile ?? {}), display_name: name } : (ctx.profile ?? null);
 }
 
-/** The text a text-like field starts with: the user's edit, else the profile value. */
+/**
+ * The text a text-like field starts with: the user's edit, else the profile value. Field-test
+ * batch 1 SIG-6 — the one shared rule (@aramo/sign-client profilePrefill); local self-sign keeps
+ * filling on open (the user signs their own document), without the name field (M-A6, D-3).
+ */
 export function textValue(f: EditorField, ctx: SelfContext, edits: SelfEdits): string {
   const edited = edits[f.key];
   if (edited !== undefined) return edited;
   if (f.type === 'TEXT') return '';
-  return profileValue(f.type, profileOrFallback(ctx), ctx.email) ?? '';
+  return (profilePrefill(profileOrFallback(ctx), ctx.email) as Readonly<Record<string, string | undefined>>)[f.type] ?? '';
 }
 
 /**

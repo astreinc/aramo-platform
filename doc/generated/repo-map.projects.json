@@ -2797,6 +2797,7 @@
       "PENDING_SIGNER_STATUSES",
       "PHONE_HINT",
       "PICKER_TYPES",
+      "PROFILE_OFFER_COPY",
       "PROFILE_TEXT_FIELD_TYPES",
       "PROFILE_TEXT_MAX",
       "PURGE_ELIGIBLE_STATUSES",
@@ -2809,6 +2810,7 @@
       "SELF_SIGN_NO_REMINDERS",
       "SENDER_ACTION_KEYS",
       "SENDER_FIELD_TYPES",
+      "SENDER_HELD_PREFILL_TYPES",
       "SIGNABLE_ENVELOPE_STATUSES",
       "SIGNERS_FULL_MESSAGE",
       "SIGNER_FIELD_VALUE_COPY",
@@ -2881,6 +2883,7 @@
       "isPartyDeletable",
       "isPaymentField",
       "isPaymentsGatedOn",
+      "isPrefillTarget",
       "isProfileTextField",
       "isPurgeEligible",
       "isPurgeExecuted",
@@ -2905,6 +2908,7 @@
       "looksLikePdf",
       "mayActNow",
       "messagingOffered",
+      "nextReminderAt",
       "normalizeAccessCode",
       "normalizeSignerInput",
       "numberPrefixOf",
@@ -2918,10 +2922,14 @@
       "placeableFieldTypes",
       "planFacts",
       "predecessorsOf",
+      "profileOfferFor",
+      "profileOffers",
+      "profilePrefill",
       "profileTextValueRefusal",
       "radioChoiceClearable",
       "recipientKindOf",
       "refusalMessage",
+      "remindableNow",
       "remindableSigners",
       "reminderLimitMessage",
       "resolveSignerTimeZone",
@@ -2931,6 +2939,7 @@
       "sendFeaturesOf",
       "senderActionsOf",
       "senderEditorSettings",
+      "senderHeldPrefills",
       "sessionIssueRefusal",
       "shownFields",
       "signDatePreview",
@@ -12244,6 +12253,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/EnvelopeDetail.reminder.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/EnvelopeDetail.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
@@ -15160,6 +15175,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/signer-profile-prefill.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/webhook-event-publisher.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -15170,6 +15191,24 @@
       {
         "excludedBy": "src/**/*.spec.ts",
         "from": "apps/sign-web/src/guest/m-a12-fields.spec.ts",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/guest/profile-prefill.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/sign-web/src/workspace/api-seats.spec.ts",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/EnvelopeDetail.reminder.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
       },
@@ -15313,6 +15352,11 @@
         "status": "unscoped"
       },
       {
+        "from": "mobile/sign/src/features/send/__tests__/sendFlow.test.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
         "from": "mobile/sign/src/features/send/draftModel.ts",
         "project": "sign-mobile",
         "status": "unscoped"
@@ -15363,6 +15407,11 @@
         "status": "unscoped"
       },
       {
+        "from": "mobile/sign/src/features/signing/__tests__/signingMA12.test.tsx",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
         "from": "mobile/sign/src/features/signing/signDate.ts",
         "project": "sign-mobile",
         "status": "unscoped"
@@ -15384,6 +15433,16 @@
       },
       {
         "from": "mobile/sign/src/screens/envelope/EnvelopeDetailScreen.tsx",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/screens/send/__tests__/DocumentsStep.test.tsx",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/screens/send/__tests__/FieldsStep.test.tsx",
         "project": "sign-mobile",
         "status": "unscoped"
       },

@@ -78,6 +78,9 @@ p { line-height: 1.5; margin: 0 0 12px; }
    window), so the Find bar (sticky in .sg-pages) stays in view. */
 .sg-viewer { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #e9edf2; }
 .sg-doctabs { display: flex; gap: 4px; padding: 8px 12px; background: var(--sg-surface); border-bottom: 1px solid var(--sg-line); overflow-x: auto; }
+/* SIG-11 (+A1) — "Fill from my profile" (top of the signing page) and one field's hint. */
+.sg-offer { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--sg-surface); border-bottom: 1px solid var(--sg-line); }
+.sg-offer__hint { align-self: flex-start; padding-left: 0; padding-right: 0; font-size: 13px; text-align: left; }
 .sg-tab--on { color: var(--sg-accent); box-shadow: inset 0 -2px 0 var(--sg-accent); border-radius: 0; }
 .sg-frame { flex: 1; width: 100%; border: 0; background: #fff; }
 .sg-frame--missing { display: grid; place-items: center; padding: 24px; color: var(--sg-muted); text-align: center; }

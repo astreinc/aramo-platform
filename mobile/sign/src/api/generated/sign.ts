@@ -1355,6 +1355,26 @@ export interface paths {
         patch: operations["updateSenderStudioTemplateVersion"];
         trace?: never;
     };
+    "/v1/sign/sender/templates/studio/versions/{versionId}/fields": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The inline field rows of a Personal template version (Sign Field-Test Batch 1 F15-2).
+         * @description PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api). Returns the version's field rows as a bare array ordered by ordinal; read-only. The Studio uses them to label the locked field chips of an adopted copy (type, label and role); a save of a locked copy never carries fields.
+         */
+        get: operations["listSenderStudioTemplateVersionFields"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/sender/templates/studio/versions/{versionId}/preview": {
         parameters: {
             query?: never;
@@ -4671,6 +4691,38 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** @description Sign Field-Test Batch 1 F15-4 — one inline field row of a template version, as Documents stores it (documents.yaml TemplateFieldDefinition). The Personal Studio reads field_type, label and signer_role to label a locked chip; the settings are shown read-only and never sent back. */
+        SenderTemplateFieldRow: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            template_version_id: string;
+            field_key: string;
+            /** @description The catalog type (@aramo/sign-fields), e.g. SIGNATURE, SIGN_DATE, TEXT, CHECKBOX. */
+            field_type: string;
+            /** @description The template signing role that fills it; null = the sender fills it. */
+            signer_role?: string | null;
+            required: boolean;
+            page_number?: number | null;
+            ordinal: number;
+            label?: string | null;
+            group_key?: string | null;
+            /** @enum {string|null} */
+            group_rule?: "SELECT_ONE" | "SELECT_ANY" | null;
+            min_selected?: number | null;
+            /** @enum {string|null} */
+            name_mode?: "SIGNER_PROFILE" | "SIGNER_ENTERED" | null;
+            tooltip?: string | null;
+            placeholder?: string | null;
+            read_only?: boolean;
+            sender_filled?: boolean;
+            /** @enum {string|null} */
+            validation?: "email" | "phone" | "us_zip" | "number_range" | "date_range" | "max_length" | null;
+            font_size?: number | null;
+            data_name?: string | null;
+            options?: components["schemas"]["FieldOptions"] | null;
+            condition?: components["schemas"]["FieldCondition"] | null;
+        };
         SignTokenRequest: {
             /** @enum {string} */
             grant_type: "client_credentials" | "urn:ietf:params:oauth:grant-type:token-exchange" | "urn:aramo:params:oauth:grant-type:sign-event";
@@ -5376,6 +5428,13 @@ export interface components {
             when: "checked" | "unchecked" | "chosen" | "one_of";
             /** @description one_of only — the dropdown choice values that show the field. */
             values?: string[];
+        };
+        /** @description M-A15 §4.1 — a saved signature or initials offered on the signing page. */
+        GuestSavedMark: {
+            /** @enum {string} */
+            kind: "TYPED" | "DRAWN";
+            typed_name: string | null;
+            image_data_url: string;
         };
         /** @description FIELD-PARITY-1 P3 — the per-type options of a field (@aramo/sign-fields FieldOptions). DROPDOWN: choices (1 to 50, unique values; a string is shorthand for {value}, label defaults to value). NUMBER: format (plain | money), currency (ISO 4217, money only, default USD), decimals (0 to 6, money default 2), and min / max with validation number_range. DATE: min_date / max_date (YYYY-MM-DD) with validation date_range. TEXT / MULTILINE_TEXT: max_length (1 to 4000) with validation max_length. Any other key, or a key the type does not take, is refused (options_invalid). */
         FieldOptions: {
@@ -6343,6 +6402,23 @@ export interface operations {
                          * @enum {string|null}
                          */
                         date_format?: "MM/DD/YYYY" | "DD/MM/YYYY" | "YYYY-MM-DD" | null;
+                        /** @description M-A15 §4.1 — the saved signature and initials this signing session may use, decided by the server from the session alone (the signing page stays session-free). Null when there is nothing to offer. */
+                        saved_marks?: {
+                            signature: components["schemas"]["GuestSavedMark"] | null;
+                            initials: components["schemas"]["GuestSavedMark"] | null;
+                            /** @description True only when this session belongs to a signed-in user (an inbox or Sign now session). */
+                            can_save: boolean;
+                        } | null;
+                        /** @description M-A16 §3 — true when the finished screen may offer "Save to my Aramo inbox" (emailed links only). False on any lookup failure. */
+                        inbox_save_available?: boolean;
+                        /** @description Field-test batch 1 SIG-11 (Amendment A1) — values by field type for a signed-in (inbox or Sign now) session, from the signer's own Sign profile and the recipient email the sender typed (one rule, @aramo/sign-client profilePrefill). EMAIL is pre-filled when the document opens; the other values are offers the page fills only when the signer chooses them, and an offer not taken is never sent. Empty values are left out; the signer-name field is never among them. Null for an emailed link, a hosted session or a guest, and on any lookup failure. */
+                        profile_prefill?: {
+                            FIRST_NAME?: string;
+                            LAST_NAME?: string;
+                            EMAIL?: string;
+                            COMPANY?: string;
+                            TITLE?: string;
+                        } | null;
                     };
                 };
             };
@@ -8558,6 +8634,32 @@ export interface operations {
             403: components["responses"]["SenderForbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listSenderStudioTemplateVersionFields: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderTemplateFieldRow"][];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     previewSenderStudioTemplateVersion: {

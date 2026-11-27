@@ -5640,6 +5640,40 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             ],
           );
           await c.query(`UPDATE documents."DocumentTemplate" SET "current_version_id" = $2::uuid WHERE "id" = $1::uuid`, [COPY, COPY_VERSION]);
+          // Sign Field-Test Batch 1 (Directive v1.0 LOCKED) F15-4 — the copy's open DRAFT (the version
+          // the Personal Studio opens for its owner) with inline field rows, so the Studio fields read
+          // returns labelled rows. A DRAFT keeps the rows deletable by the state above (the M-A6 trigger
+          // freezes rows of a non-DRAFT version), and the `master` object reads the current version
+          // first, so the TEMPLATE-SYNC-1 interaction is unchanged.
+          const COPY_DRAFT = 'd0c4c000-0000-7000-8000-0000000000f4';
+          await c.query(
+            `INSERT INTO documents."TemplateVersion" ("id","tenant_id","template_id","version_number","status","render_schema_version","field_schema","created_by","based_on_platform_version_id")
+             VALUES ($1::uuid,$2::uuid,$3::uuid,2,'DRAFT','rtr-html-v3',$4::jsonb,$5::uuid,$6::uuid)`,
+            [
+              COPY_DRAFT,
+              PERSONAL,
+              COPY,
+              JSON.stringify({
+                render_schema_version: 'rtr-html-v3',
+                title: 'Right to Represent',
+                html: '<p>Our wording.</p><p>Signed: <span data-sign-field="client_signature"></span> on <span data-sign-field="client_sign_date"></span></p>',
+                logo: null,
+                signing: { roles: [{ role_key: 'client', label: 'Client', kind: 'SIGNER', order: 1 }], routing_mode: 'PARALLEL' },
+              }),
+              OWNER,
+              OLD_MASTER_VERSION,
+            ],
+          );
+          for (const [key, type, label, ordinal] of [
+            ['client_signature', 'SIGNATURE', 'Client signature', 0],
+            ['client_sign_date', 'SIGN_DATE', 'Date signed', 1],
+          ] as const) {
+            await c.query(
+              `INSERT INTO documents."TemplateFieldDefinition" ("id","template_version_id","field_key","field_type","binding_key","required","page_number","x","y","width","height","signer_role","ordinal","label")
+               VALUES (gen_random_uuid(),$1::uuid,$2,$3,NULL,true,NULL,NULL,NULL,NULL,NULL,'client',$4,$5)`,
+              [COPY_DRAFT, key, type, ordinal, label],
+            );
+          }
         });
       },
       // E-Sign OC v2 (B8) — generic lifecycle webhook. Self-contained/no-op: the

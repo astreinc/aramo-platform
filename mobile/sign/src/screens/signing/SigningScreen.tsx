@@ -23,7 +23,6 @@ import {
   startInboxSigning,
 } from '../../features/inbox/inboxSigning';
 import { signKeys, useInbox, useOnline, useSenderContext } from '../../features/inbox/queries';
-import { profileValue, useSignProfile } from '../../features/profile/signProfile';
 import { SigningFlow } from '../../features/signing/SigningFlow';
 import { useHeaderFinish } from '../../features/signing/useHeaderFinish';
 import { stashGuestToken } from '../../links/guestTokenVault';
@@ -42,8 +41,6 @@ export function SigningScreen({ route, navigation }: Props) {
   const { workspace, guest } = useServices();
   const inbox = useInbox();
   const ctx = useSenderContext();
-  const profile = useSignProfile();
-  const prefill = (type: string) => profileValue(type, profile.data ?? null, ctx.data?.user.email ?? null);
   const setHeaderFinish = useHeaderFinish();
   const item = findInboxItem(inbox.data, inboxItemId);
   const [start, setStart] = useState<
@@ -141,8 +138,8 @@ export function SigningScreen({ route, navigation }: Props) {
       // name, and the signer types any other.
       signerName={ctx.data?.user.display_name ?? ''}
       signedIn
-      // M-A12 W1-C.4 — the signer's own Sign profile pre-fills the profile field types.
-      prefill={prefill}
+      // SIG-11 (+A1) — the server's profile_prefill (an INBOX session) offers the signer's own
+      // profile values; the client keeps no copy of the rule.
       // The signed copy by item id needs a binding (W2: not for a discovered item).
       onViewCertificate={
         item && !hasBindingActions(item) ? undefined : () => void viewCertificate()

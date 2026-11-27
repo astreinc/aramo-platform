@@ -34,7 +34,11 @@ export function useOptionalWorkspace(): WorkspaceValue | null {
 export function WorkspaceProvider({ ctx, children }: { ctx: SenderContext; children: ReactNode }) {
   const [awaiting, setAwaiting] = useState(0);
   const [tick, setTick] = useState(0);
-  const [toastMsg, setToastMsg] = useState('');
+  // UAT SND-14 (SND-3) — each toast() call is its own showing: `seq` changes on every call, so
+  // the same words shown again (a second refused reminder) restart the 3 seconds instead of
+  // being dropped as an unchanged state and vanishing with the earlier timer.
+  const [toastState, setToastState] = useState<{ msg: string; seq: number }>({ msg: '', seq: 0 });
+  const toastMsg = toastState.msg;
   useEffect(() => {
     let live = true;
     senderApi
@@ -48,12 +52,12 @@ export function WorkspaceProvider({ ctx, children }: { ctx: SenderContext; child
     };
   }, [tick]);
   useEffect(() => {
-    if (toastMsg === '') return undefined;
-    const t = setTimeout(() => setToastMsg(''), 3000);
+    if (toastState.msg === '') return undefined;
+    const t = setTimeout(() => setToastState((cur) => ({ msg: '', seq: cur.seq })), 3000);
     return () => clearTimeout(t);
-  }, [toastMsg]);
+  }, [toastState]);
   const refreshCounts = useCallback(() => setTick((n) => n + 1), []);
-  const toast = useCallback((m: string) => setToastMsg(m), []);
+  const toast = useCallback((m: string) => setToastState((cur) => ({ msg: m, seq: cur.seq + 1 })), []);
   return (
     <WorkspaceCtx.Provider value={{ ctx, base: ctx.workspace === 'personal' ? '/personal' : '/sign', awaiting, refreshCounts, toast }}>
       {children}

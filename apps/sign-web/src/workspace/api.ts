@@ -1278,13 +1278,3 @@ export const savedMarksApi = {
   put: (target: SavedMarkTarget, body: SavedMarkWrite) => apiClient.put<SavedMark>(`/v1/sign/me/${target}`, body),
   remove: (target: SavedMarkTarget) => apiClient.delete<void>(`/v1/sign/me/${target}`),
 };
-
-/** UAT SND-14 — the soonest time a reminder can go again, when none can go now (else null). */
-export function nextReminderAt(recipients: readonly { can_remind?: boolean; reminder_available_at?: string | null }[], now: Date = new Date()): string | null {
-  if (recipients.some((r) => r.can_remind === true)) return null;
-  const times = recipients
-    .map((r) => r.reminder_available_at)
-    .filter((t): t is string => typeof t === 'string' && !Number.isNaN(new Date(t).getTime()) && new Date(t).getTime() > now.getTime())
-    .sort();
-  return times[0] ?? null;
-}

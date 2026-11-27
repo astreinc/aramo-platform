@@ -68,6 +68,8 @@ const INBOX_ACTIONS = { sign: boolean(true), download: boolean(false), delete: b
 //   app-issues 202, template favorite PUT/DELETE 204 (see the M-A12 describe at the end).
 // FIELD-PARITY-2 B-6: POST /v1/sign/signing/document 200 — each field's field_key + condition
 //   (the signing link's token in the body; see the FIELD-PARITY-2 describe at the end).
+// Field-test batch 1 SIG-11 (+A1): POST /v1/sign/signing/document 200 — profile_prefill on a
+//   signed-in (SELF) session (see the SIG-11 describe at the end).
 
 const provider = new PactV4({
   consumer: 'sign-mobile',
@@ -1097,6 +1099,47 @@ describe('sign-mobile → FIELD-PARITY-2 clear a stored value', () => {
           body: JSON.stringify({ token: CLEAR_TOKEN, value: null }),
         });
         expect(res.status).toBe(200);
+      });
+  });
+});
+
+// Aramo-Sign-Field-Test-Batch-1 §2 SIG-4 (+A1) — on a signed-in (Sign now / inbox) session the
+// signing view carries profile_prefill: the user's own Sign profile values and the recipient
+// email (the server decides; the app offers the profile values, never sends one untaken).
+const PREFILL_ENVELOPE_ID = 'e6c30000-0000-7000-8000-0000000000c1';
+const PREFILL_TOKEN = 'sign-mobile-pact-token-profile-prefill';
+describe('sign-mobile → SIG-11 profile_prefill on the signing view', () => {
+  it('returns the signed-in signer’s profile values', async () => {
+    await provider
+      .addInteraction()
+      .given('a signed-in self-sign session with a Sign profile has accepted the disclosure', { envelope_id: PREFILL_ENVELOPE_ID, token: PREFILL_TOKEN })
+      .uponReceiving('a native signing document view on a signed-in session with a Sign profile')
+      .withRequest('POST', '/v1/sign/signing/document', (b) => {
+        b.headers({ 'Content-Type': 'application/json' }).jsonBody({ token: PREFILL_TOKEN });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          documents: eachLike({ document_id: uuid(childOf(PREFILL_ENVELOPE_ID, 2)), title: like('offer.pdf'), ordinal: integer(1) }),
+          fields: eachLike({ field_id: uuid(childOf(PREFILL_ENVELOPE_ID, 4)), field_type: like('SIGNATURE') }),
+          profile_prefill: {
+            FIRST_NAME: like('Sam'),
+            LAST_NAME: like('Sender'),
+            EMAIL: like('sam.sender@example.com'),
+            COMPANY: like('Pact Sign Co'),
+            TITLE: like('Account Manager'),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/signing/document`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: PREFILL_TOKEN }),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { profile_prefill: Record<string, string> | null };
+        expect(body.profile_prefill?.['COMPANY']).toBe('Pact Sign Co');
+        expect(body.profile_prefill?.['EMAIL']).toBe('sam.sender@example.com');
       });
   });
 });

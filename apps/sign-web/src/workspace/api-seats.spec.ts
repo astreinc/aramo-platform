@@ -1,7 +1,8 @@
 import { ApiError } from '@aramo/fe-foundation';
+import { nextReminderAt, remindableNow, reminderLimitMessage } from '@aramo/sign-client';
 import { describe, expect, it } from 'vitest';
 
-import { errorMessage, isSeatLimitReached, seatLimitMessage } from './api';
+import { errorMessage, isSeatLimitReached, nextSendTime, seatLimitMessage } from './api';
 import { parseSeats, seatsUsedText } from './catalog';
 
 // Sign Business per-seat directive (v1.0 LOCKED) §3.5.2 — a 409 seat_limit_reached wherever a member
@@ -62,16 +63,34 @@ describe('storage full', () => {
   });
 });
 
-// UAT SND-14 — a second reminder says when the next one can go.
+// UAT SND-14 — a second reminder says when the next one can go. The rule of who can be reminded
+// now is @aramo/sign-client's (remindableNow / nextReminderAt, the app's): can_remind stays true
+// during the cooldown, and reminder_available_at says when it ends (field-test batch 1 SND-4).
 describe('reminder cooldown', () => {
-  it('a refused reminder names the time; the page knows the soonest time from the recipients', async () => {
-    const { nextReminderAt } = await import('./api');
-    const msg = errorMessage(new ApiError(429, 'x', 'ESIGN_REMINDER_NOT_ALLOWED', { reason: 'reminder_cooldown', retry_at: '2026-11-19T15:30:00Z' }));
+  it('a refused reminder names the time (the shared reminderLimitMessage words)', () => {
+    const e = new ApiError(429, 'x', 'ESIGN_REMINDER_NOT_ALLOWED', { reason: 'reminder_cooldown', retry_after_seconds: 3000, retry_at: '2026-11-19T15:30:00Z' });
     // C3 (audit row 8) — the app's words: why, then when.
-    expect(msg).toMatch(/^This signer was reminded less than an hour ago\. You can send another reminder at .+\.$/);
-    const now = new Date('2026-11-19T14:40:00Z');
-    expect(nextReminderAt([{ can_remind: false, reminder_available_at: '2026-11-19T15:30:00Z' }, { can_remind: false, reminder_available_at: '2026-11-19T15:10:00Z' }], now)).toBe('2026-11-19T15:10:00Z');
-    expect(nextReminderAt([{ can_remind: true, reminder_available_at: null }], now)).toBeNull();
-    expect(nextReminderAt([{ can_remind: false, reminder_available_at: '2026-11-19T14:00:00Z' }], now)).toBeNull();
+    expect(errorMessage(e)).toBe(reminderLimitMessage('reminder_cooldown', nextSendTime('2026-11-19T15:30:00Z')));
+    expect(errorMessage(e)).toMatch(/^This signer was reminded less than an hour ago\. You can send another reminder at .+\.$/);
+    const daily = new ApiError(429, 'x', 'ESIGN_REMINDER_NOT_ALLOWED', { reason: 'reminder_daily_limit', retry_at: '2026-11-20T09:00:00Z' });
+    expect(errorMessage(daily)).toBe(reminderLimitMessage('reminder_daily_limit', nextSendTime('2026-11-20T09:00:00Z')));
+  });
+
+  it('a waiting signer keeps can_remind true during the cooldown: not remindable now, and the page knows when', () => {
+    const now = Date.parse('2026-11-19T14:40:00Z');
+    const cooling = [{ can_remind: true, reminder_available_at: '2026-11-19T15:30:00Z' }, { can_remind: true, reminder_available_at: '2026-11-19T15:10:00Z' }];
+    expect(remindableNow(cooling, now)).toEqual([]);
+    expect(nextReminderAt(cooling)).toBe('2026-11-19T15:10:00Z');
+    // The old web copy returned null whenever any signer had can_remind, so the note never showed.
+    expect(remindableNow([{ can_remind: true, reminder_available_at: null }], now)).toHaveLength(1);
+    expect(nextReminderAt([{ can_remind: true, reminder_available_at: null }])).toBeNull();
+    // Once the time passes, the signer can be reminded again.
+    expect(remindableNow(cooling, Date.parse('2026-11-19T15:10:00Z'))).toEqual([cooling[1]]);
+    // A signer the server never reminds is never counted.
+    expect(nextReminderAt([{ can_remind: false, reminder_available_at: '2026-11-19T15:00:00Z' }])).toBeNull();
+  });
+
+  it('sign-web keeps no copy of the rule', async () => {
+    expect('nextReminderAt' in (await import('./api'))).toBe(false);
   });
 });

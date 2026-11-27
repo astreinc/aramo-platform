@@ -6,7 +6,7 @@
 // The profile pre-fills the profile field types (W1-C.4) for the signed-in user only, and
 // the settings set the date format of SIGN_DATE and the starting size of placed fields.
 // Routes are not in the generated types yet: typed by api/m-a12-contract-types.ts.
-import { DEFAULT_SIGN_DATE_FORMAT, E164_PATTERN, SIGN_DATE_FORMATS, signDatePreview } from '@aramo/sign-client';
+import { DEFAULT_SIGN_DATE_FORMAT, E164_PATTERN, SIGN_DATE_FORMATS, profilePrefill, signDatePreview } from '@aramo/sign-client';
 import { useQuery } from '@tanstack/react-query';
 
 import { isApiError } from '../../api/errors';
@@ -134,33 +134,17 @@ export function profileBody(d: ProfileDraft): SignProfile {
 }
 
 /**
- * W1-C.4 — what the profile pre-fills for a field type, or null when it holds nothing.
- * FIRST_NAME / LAST_NAME split the display name at its first space.
+ * W1-C.4 — what the profile fills for a field type, or null when it holds nothing. Field-test
+ * batch 1 SIG-6: the one shared rule (@aramo/sign-client profilePrefill) — FIRST_NAME / LAST_NAME
+ * split the display name at its first space (a single word: first name only), EMAIL is the
+ * email given, and the signer-name field is never filled (M-A6, D-3).
  */
 export function profileValue(
   fieldType: string,
   profile: SignProfile | null | undefined,
   email: string | null | undefined,
 ): string | null {
-  const name = (profile?.display_name ?? '').trim();
-  const [first, ...rest] = name.split(/\s+/).filter(Boolean);
-  const v = (x: string | null | undefined) => (x && x.trim() ? x.trim() : null);
-  switch (fieldType) {
-    case 'SIGNER_NAME':
-      return v(name);
-    case 'FIRST_NAME':
-      return v(first);
-    case 'LAST_NAME':
-      return v(rest.join(' '));
-    case 'EMAIL':
-      return v(email);
-    case 'COMPANY':
-      return v(profile?.company);
-    case 'TITLE':
-      return v(profile?.title);
-    default:
-      return null;
-  }
+  return (profilePrefill(profile, email) as Readonly<Record<string, string | undefined>>)[fieldType] ?? null;
 }
 
 /** A date in the user's format (W1-E.2) — the same formatter as the SIGN_DATE preview (C0-2). */

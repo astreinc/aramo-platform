@@ -63,6 +63,8 @@ function harness(opts: { kind?: string; held?: string[]; adoptedFrom?: string | 
     masterContent: vi.fn(async () => ({ version_number: 2 })),
     draftFromMaster: vi.fn(async () => ({ id: 'v-2' })),
     keepVersion: vi.fn(async () => ({ id: OWN })),
+    // Sign Field-Test Batch 1 F15-1.
+    listFields: vi.fn(async () => [{ field_key: 'sig_1', field_type: 'SIGNATURE', label: 'Employee signature', signer_role: 'Signer 1', required: true, ordinal: 0 }]),
   };
   const templates = {
     listTemplates: vi.fn(async () => [{ id: OWN, adopted_from_template_id: opts.adoptedFrom ?? null }]),
@@ -219,5 +221,26 @@ describe('TEMPLATE-SYNC-1 — compare / start a draft from the new version / kee
     await expect(manager.svc.draftFromMaster({ ...who, template_id: OWN })).rejects.toMatchObject({ statusCode: 403, context: { details: { reason: 'template_authoring_required' } } });
     const biz = harness({ kind: 'BUSINESS' });
     await expect(biz.svc.masterContent({ ...who, template_id: OWN })).rejects.toMatchObject({ statusCode: 403, context: { details: { reason: 'organization_templates_in_org_home' } } });
+  });
+});
+
+// Sign Field-Test Batch 1 (Directive v1.0 LOCKED) F15-1 — a version's field rows for the Personal
+// Studio's locked chips: the SAME tenant read as Org Home, as the person (live grants, 'read').
+describe('F15-1 — the version field rows (read)', () => {
+  it('a reader with author or manage gets the bare array; a plain reader and BUSINESS are refused', async () => {
+    const h = harness({ held: ['document_template:read', 'document_template:author'] });
+    const rows = await h.svc.listFields({ ...who, version_id: 'v' });
+    expect(rows).toEqual([{ field_key: 'sig_1', field_type: 'SIGNATURE', label: 'Employee signature', signer_role: 'Signer 1', required: true, ordinal: 0 }]);
+    expect(h.tenantTemplates.listFields).toHaveBeenCalledWith(expect.objectContaining({ sub: ACTOR, tenant_id: TENANT }), 'v', 'r');
+    const manager = harness({ held: ['document_template:read', 'document_template:manage'] });
+    await manager.svc.listFields({ ...who, version_id: 'v' });
+    expect(manager.tenantTemplates.listFields).toHaveBeenCalledTimes(1);
+
+    const reader = harness({ held: ['document_template:read'] });
+    await expect(reader.svc.listFields({ ...who, version_id: 'v' })).rejects.toMatchObject({ statusCode: 403, context: { details: { reason: 'template_authoring_required' } } });
+    const biz = harness({ kind: 'BUSINESS' });
+    await expect(biz.svc.listFields({ ...who, version_id: 'v' })).rejects.toMatchObject({ statusCode: 403, context: { details: { reason: 'organization_templates_in_org_home' } } });
+    expect(reader.tenantTemplates.listFields).not.toHaveBeenCalled();
+    expect(biz.tenantTemplates.listFields).not.toHaveBeenCalled();
   });
 });

@@ -1877,6 +1877,37 @@ paths:
           $ref: '#/components/responses/Conflict'
         '503':
           $ref: '#/components/responses/EsignS2sUnavailable'
+  /v1/documents/esign/templates/studio/versions/{versionId}/fields:
+    get:
+      operationId: listSignStudioTemplateVersionFields
+      summary: The inline field rows of a Personal template version (Sign Field-Test Batch 1 F15-1).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). PERSONAL tenants only: a BUSINESS tenant is refused 403 (details.reason organization_templates_in_org_home; Org Home owns organization templates). The authority comes from the acting person's live role grants (actor_id). Needs document_template:author or document_template:manage. Same answer as GET /v1/document-templates/versions/{versionId}/fields (tenant-scoped; a bare array ordered by ordinal). Read-only: the Personal Studio uses it to label its locked field chips.
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+        - $ref: '#/components/parameters/EsignS2sTenantId'
+        - $ref: '#/components/parameters/EsignS2sActorId'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      responses:
+        '200':
+          description: The field definitions, ordered.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TemplateFieldDefinition'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '403':
+          $ref: '#/components/responses/EsignStudioForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
   /v1/documents/esign/templates/studio/versions/{versionId}/preview:
     post:
       operationId: previewSignStudioTemplateVersion

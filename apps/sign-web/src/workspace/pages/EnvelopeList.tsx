@@ -122,6 +122,9 @@ export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {
         toast(errorMessage(e));
         // A changed or expired item: the inbox lists the latest ones.
         if (isInboxItemNotFound(e)) navigate(`${base}/inbox`);
+        // Field-test batch 1 A2 SGN-3 — reload, so the row's actions are the server's current
+        // answer (a Sign the server refused does not stay on screen).
+        else setReload((n) => n + 1);
       } finally {
         setBusy(false);
       }
@@ -265,7 +268,10 @@ export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {
                     </td>
                     <td className="sg-muted">{rel(e.last_activity_at)}</td>
                     <td className="sg-muted">{e.sent_at === null ? '—' : fmtDate(e.sent_at)}</td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {/* Field-test batch 1 A2 SGN-1 — the row's actions sit in one row with a gap;
+                          they never wrap under (or overlap) each other. */}
+                      <div data-testid={`row-actions-${e.id}`} style={{ display: 'inline-flex', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
                       {actions.sign && !deleted ? (
                         <Btn variant="primary" size="sm" disabled={busy} onClick={() => void signFromList(e)} data-testid={`sign-${e.id}`}>
                           Sign
@@ -292,6 +298,7 @@ export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {
                           <Icon name="trash" />
                         </LinkBtn>
                       ) : null}
+                      </div>
                     </td>
                   </tr>
                   );

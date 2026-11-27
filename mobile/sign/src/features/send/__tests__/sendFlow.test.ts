@@ -1,3 +1,5 @@
+import { STORAGE_FULL } from '@aramo/sign-client';
+
 import { createDraftStore } from '../../../state/draftStore';
 import { createEncryptedStore } from '../../../state/encryptedStore';
 import { memoryFiles, memoryKv, nodeAesGcm, type RecordedRequest } from '../../../testing/fakes';
@@ -24,6 +26,8 @@ function setup(
     refuseFirstUploads?: number;
     accountEmail?: string;
     refuseWord?: { readonly status: number; readonly reason: string };
+    storageFull?: boolean;
+    networkDownUploads?: number;
   } = {},
 ) {
   const kv = memoryKv();
@@ -175,10 +179,14 @@ describe('Send flow: concurrency (M-A3 §6)', () => {
 
 describe('Send flow: a sync that fails part-way', () => {
   it('a retry continues the envelope it already created, never a second one', async () => {
-    // Every upload attempt of the first sync fails (3 tries), after the create succeeded.
-    const t = setup({ refuseFirstUploads: 3 });
+    // Every upload attempt of the first two syncs fails (3 tries each), after the create
+    // succeeded: the one when the document is added (UAT DOC-06) and the next one.
+    const t = setup({ refuseFirstUploads: 6 });
     const c = t.make();
     await prepared(c);
+    // A server error is not a refusal: the document waits for the next sync.
+    expect(c.snapshot.error).toBeNull();
+    expect(c.snapshot.draft!.payload.documents[0]!.pendingUpload).not.toBeNull();
     expect(await c.sync()).toBe(false);
     expect(c.snapshot.draft!.envelopeId).toBe(t.server.ENV_ID);
     expect(c.snapshot.draft!.payload.recipients).toHaveLength(1);
@@ -548,6 +556,95 @@ describe('Word upload (M-A13 R-4)', () => {
     expect(c.snapshot.draft!.payload.documents).toEqual([]);
     expect(c.snapshot.error).toBe(WORD_NEEDS_CONNECTION);
     expect(writes(t.server.calls)).toEqual([]);
+  });
+});
+
+describe('Send flow: a PDF is uploaded when it is added online (UAT DOC-06)', () => {
+  const uploads = (t: ReturnType<typeof setup>) =>
+    t.server.calls.filter((r) => r.method === 'POST' && r.url.endsWith('/documents'));
+
+  it('online: the PDF reaches the server at once', async () => {
+    const t = setup();
+    const c = t.make();
+    await c.open();
+    const key = await c.addDocument({ title: 'Offer letter', filename: 'Offer letter.pdf', bytes: PDF });
+    expect(key).not.toBeNull();
+    const doc = c.snapshot.draft!.payload.documents[0]!;
+    expect(doc).toMatchObject({ key, serverId: 'doc-1', pendingUpload: null });
+    expect(c.snapshot.error).toBeNull();
+    expect(writes(t.server.calls).map((r) => `${r.method} ${r.url.split(t.server.ENV_ID)[1] ?? ''}`)).toEqual([
+      'POST ',
+      'POST /documents',
+      'PATCH ',
+    ]);
+  });
+
+  it('storage full at add: the document is not kept and the shared words show in the Add sheet', async () => {
+    const t = setup({ storageFull: true });
+    const c = t.make();
+    await c.open();
+    const key = await c.addDocument({ title: 'Offer letter', filename: 'Offer letter.pdf', bytes: PDF });
+    expect(key).toBeNull();
+    expect(c.snapshot.draft!.payload.documents).toEqual([]);
+    // One wording for web and app (@aramo/sign-client); never the server's own text.
+    expect(c.snapshot.error).toBe(STORAGE_FULL);
+    expect(STORAGE_FULL).toMatch(/your plan settings/);
+    // A refusal is not retried.
+    expect(uploads(t)).toHaveLength(1);
+    expect(t.server.envelope!.documents).toEqual([]);
+  });
+
+  it('offline: the PDF is kept and never refused; the next sync refuses it on that step', async () => {
+    const t = setup({ online: false, storageFull: true });
+    const c = t.make();
+    await c.open();
+    const key = await c.addDocument({ title: 'Offer letter', filename: 'Offer letter.pdf', bytes: PDF });
+    expect(key).not.toBeNull();
+    expect(c.snapshot.error).toBeNull();
+    expect(c.snapshot.draft!.payload.documents[0]!.pendingUpload).not.toBeNull();
+    expect(t.server.calls).toHaveLength(0);
+
+    // Back online, the Fields step syncs: the refusal shows there and the document stays.
+    t.setOnline(true);
+    c.setStep('fields');
+    expect(await c.sync()).toBe(false);
+    expect(c.snapshot.error).toBe(STORAGE_FULL);
+    expect(c.snapshot.draft!.payload.documents.map((d) => d.key)).toEqual([key]);
+  });
+
+  it('a network failure at add keeps the document pending; the next sync uploads it once', async () => {
+    const t = setup({ networkDownUploads: UPLOAD_ATTEMPTS });
+    const c = t.make();
+    await c.open();
+    const key = await c.addDocument({ title: 'Offer letter', filename: 'Offer letter.pdf', bytes: PDF });
+    expect(key).not.toBeNull();
+    expect(c.snapshot.error).toBeNull();
+    const pending = c.snapshot.draft!.payload.documents[0]!;
+    expect(pending.pendingUpload).not.toBeNull();
+    expect(uploads(t)).toHaveLength(UPLOAD_ATTEMPTS);
+
+    expect(await c.sync()).toBe(true);
+    const doc = c.snapshot.draft!.payload.documents[0]!;
+    expect(doc).toMatchObject({ key, serverId: 'doc-1', pendingUpload: null });
+    expect(t.server.envelope!.documents).toHaveLength(1);
+    // The same envelope and the same Idempotency-Key throughout.
+    const creates = t.server.calls.filter((r) => r.method === 'POST' && r.url.endsWith('/v1/sign/sender/envelopes'));
+    expect(creates).toHaveLength(1);
+    expect(new Set(uploads(t).map((r) => r.headers['Idempotency-Key'])).size).toBe(1);
+  });
+
+  it('a refusal of an earlier document does not remove the one just added', async () => {
+    const t = setup({ online: false });
+    const c = t.make();
+    await c.open();
+    await c.addDocument({ title: 'First', filename: 'First.pdf', bytes: PDF });
+    t.server.setStorageFull(true);
+    t.setOnline(true);
+    // The earlier, offline document is the upload refused; the new one never reached the server.
+    const key = await c.addDocument({ title: 'Second', filename: 'Second.pdf', bytes: PDF });
+    expect(key).not.toBeNull();
+    expect(c.snapshot.draft!.payload.documents.map((d) => d.title)).toEqual(['First', 'Second']);
+    expect(c.snapshot.error).toBe(STORAGE_FULL);
   });
 });
 

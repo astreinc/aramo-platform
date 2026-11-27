@@ -101,6 +101,18 @@ export class GuestSavedMarksRepository {
     return session !== null && (session.origin === null || session.origin === 'LINK');
   }
 
+  /**
+   * Field-test batch 1 SIG-11 D-5 — the recipient email the sender typed for this signer (the
+   * Email field's pre-fill on a signed-in session), or null.
+   */
+  async recipientEmail(ctx: SessionContext): Promise<string | null> {
+    const signer = await this.prisma.signer.findFirst({
+      where: { id: ctx.signer_id, tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id },
+      select: { email: true },
+    });
+    return signer?.email ?? null;
+  }
+
   /** §3 — the user whose saved marks this signing session may use, or null. */
   async bindingFor(ctx: SessionContext): Promise<SavedMarksBinding | null> {
     const session = await this.prisma.signingSession.findFirst({
