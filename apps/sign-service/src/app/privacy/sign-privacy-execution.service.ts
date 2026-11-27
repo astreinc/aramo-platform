@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   IDENTITY_RETIREMENT_PORT,
   IdentityDependencyInspector,
+  PRIVACY_EXECUTION_MAX_ATTEMPTS,
   PersonalRiskService,
   PrivacyRequestService,
   PrivacySubjectService,
@@ -41,8 +42,9 @@ import { AramoSignStorageGate } from '../billing/aramo-sign-storage.gate.js';
 //                 deleted incl. stored objects;       (referred to the organization)
 //                 completed agreements + evidence
 //                 follow the retention rules
-//   Account       risk state closed + tenant          Sign-only roles removed; the
-//                 lifecycle → CLOSED (sign-in ends)   Business tenant is never touched
+//   Account       risk state closed + tenant          Sign access kept (organization-
+//                 lifecycle → CLOSED (sign-in ends)   administered, M-A8 §2.3); the
+//                                                     Business tenant is never touched
 //   Shared        user + membership deactivated and   never retired
 //   identity      the IdP user retired ONLY when no
 //                 other membership / product remains
@@ -68,6 +70,16 @@ import { AramoSignStorageGate } from '../billing/aramo-sign-storage.gate.js';
 // A retry after a failure at any step completes: every step is idempotent, a failed
 // identity retirement throws (the request stays EXECUTING), and a user already
 // tombstoned skips the identity steps.
+//
+// PRIV-ADMIN-1:
+//   OD-3  the Business-member path no longer removes Sign roles (access removal is the
+//         organization's route, M-A8 §2.3); it still revokes the member's Sign sessions
+//         and removes the member's own convenience data.
+//   OD-4  a failure is recorded (EXECUTION_FAILED) and moves the request to the back of
+//         the worker queue; the 5th failure since the request entered EXECUTING returns
+//         it to DATA_INVENTORY with EXECUTION_GAVE_UP (the worker applies the back-off).
+//   OD-13 stored_objects_deleted counts only objects actually deleted; session counts
+//         that could not be read stay null (never 0).
 
 export const PRIVACY_DELETION_REASON = 'privacy_deletion';
 const SYSTEM: PrivacyActor = { actor_type: 'SYSTEM', actor_id: null };
@@ -170,7 +182,7 @@ export class SignPrivacyExecutionService {
       } else {
         evidence = await this.executeMember(ctx);
         outcome_code = 'member_sign_data_removed';
-        outcome_text = memberOutcomeText(evidence);
+        outcome_text = memberOutcomeText();
       }
       const done = await this.requests.transition(req.id, 'COMPLETED', SYSTEM, {
         now,
@@ -181,11 +193,22 @@ export class SignPrivacyExecutionService {
       this.log.log(`privacy request ${req.reference} completed (${personalOwner ? 'personal' : 'member'})`);
       return { status: 'completed', request: done };
     } catch (err) {
-      // Stays EXECUTING; the worker retries (every step is idempotent).
-      await this.requests.recordEvent(req.id, 'EXECUTION_FAILED', SYSTEM, { error: (err as Error).name }, now).catch(() => undefined);
-      this.log.warn(`privacy request ${req.reference} execution failed: ${(err as Error).name}`);
+      // Stays EXECUTING; the worker retries with back-off (every step is idempotent).
+      const error = (err as Error).name;
+      await this.requests.recordEvent(req.id, 'EXECUTION_FAILED', SYSTEM, { error }, now, { touch: true }).catch(() => undefined);
+      this.log.warn(`privacy request ${req.reference} execution failed: ${error}`);
+      await this.giveUpWhenCapped(req, error, now).catch(() => undefined);
       throw err;
     }
+  }
+
+  /** OD-4 — after the capped number of failures the request returns to the operator queue. */
+  private async giveUpWhenCapped(req: PrivacyRequestRecord, error: string, now: Date): Promise<void> {
+    const attempts = (await this.requests.executionAttempts([req.id])).get(req.id)?.attempts ?? 0;
+    if (attempts < PRIVACY_EXECUTION_MAX_ATTEMPTS) return;
+    await this.requests.recordEvent(req.id, 'EXECUTION_GAVE_UP', SYSTEM, { attempts, last_error: error }, now);
+    await this.requests.transition(req.id, 'DATA_INVENTORY', SYSTEM, { now, from: ['EXECUTING'], payload: { returned_because: 'EXECUTION_GAVE_UP' } });
+    this.log.warn(`privacy request ${req.reference} returned to the queue after ${attempts} failed attempts`);
   }
 
   // M-A8 §3.3 / §3.4 — the Sign-specific part, common to both Personal paths: sessions,
@@ -200,17 +223,24 @@ export class SignPrivacyExecutionService {
     let drafts_deleted = 0;
     let draft_documents_deleted = 0;
     let stored_objects_deleted = 0;
+    let stored_objects_not_deleted = 0;
     for (const envelope_id of await this.sign.draftEnvelopeIds(owner)) {
       const removed = await this.drafts.deleteDraft({ tenant_id: ctx.tenant_id, envelope_id, actor_ref: ctx.user_id });
       drafts_deleted += 1;
       draft_documents_deleted += removed.document_count;
       for (const key of removed.source_object_keys) {
-        await this.storage?.deleteOwnedSource?.(key);
+        // OD-13 (C-3) — counted only when the storage port actually deleted it.
+        if (this.storage?.deleteOwnedSource !== undefined) {
+          await this.storage.deleteOwnedSource(key);
+          stored_objects_deleted += 1;
+        } else {
+          stored_objects_not_deleted += 1;
+        }
         await this.storageGate?.release(ctx.tenant_id, key).catch(() => undefined);
-        stored_objects_deleted += 1;
       }
     }
-    return { ...sessions, ...convenience, recipient_bindings_deleted, drafts_deleted, draft_documents_deleted, stored_objects_deleted };
+    // OD-13 (C-4) — `sessions` keeps null for a store that could not be read.
+    return { ...sessions, ...convenience, recipient_bindings_deleted, drafts_deleted, draft_documents_deleted, stored_objects_deleted, stored_objects_not_deleted };
   }
 
   /** Risk state closed (sending ends) and the tenant lifecycle CLOSED (sign-in ends). */
@@ -280,21 +310,19 @@ export class SignPrivacyExecutionService {
     return true;
   }
 
-  // §3.2 Business member column.
+  // §3.2 Business member column, as amended by PRIV-ADMIN-1 OD-3 (M-A8 §0.4 / §2.2 /
+  // §2.3): the member's sessions and own convenience data only. Sign roles are never
+  // removed here — access removal is the organization's route (DELETE
+  // /v1/tenant/users/:user_id/products/sign).
   private async executeMember(ctx: PrivacySubjectContext): Promise<Record<string, unknown>> {
     const owner = { tenant_id: ctx.tenant_id, user_id: ctx.user_id };
     const sessions = await this.sign.revokeSignSessions({ ...owner, reason: PRIVACY_DELETION_REASON });
     const convenience = await this.purgeConvenience(owner);
-    const access = await this.subjects.removeSignAccess(ctx.user_id, ctx.tenant_id);
-    // Organization-wide roles (tenant_owner / tenant_admin) also carry other products and
-    // stay: the organization decides those (the referral records it).
-    const orgWideSignRoleRetained = access.remaining_role_keys.some((k) => k === 'tenant_owner' || k === 'tenant_admin');
     return {
       path: 'business_member',
       ...sessions,
       ...convenience,
-      sign_roles_removed: access.roles_removed,
-      organization_wide_role_retained: orgWideSignRoleRetained,
+      sign_access: 'organization_administered',
       tenant_closed: false,
       identity_retained: true,
       retained: [...SIGN_RETAINED_CATEGORIES.map((c) => c.key), SIGN_BUSINESS_RETAINED_CATEGORY.key],
@@ -339,7 +367,8 @@ function personalRetainOutcomeText(e: Record<string, unknown>): string {
   return `${tenant}: sessions signed out, saved signatures, contacts, notifications, inbox items and drafts removed. Your sign-in identity is kept because it is still used by another Aramo account, product or linked sign-in; our privacy team reviews it. Records we must keep are listed with this request.`;
 }
 
-function memberOutcomeText(e: Record<string, unknown>): string {
-  const role = e['organization_wide_role_retained'] === true ? ' Your organization-wide role is managed by your organization.' : '';
-  return `Your Aramo Sign sessions were signed out, your own Sign data (saved signatures, contacts, notifications) deleted and your Sign access removed.${role} Documents your organization sent or that you received in your role stay under your organization’s authority; we referred your request to it.`;
+// PRIV-ADMIN-1 OD-3 — the member's Sign access is no longer removed by this path, so the
+// outcome no longer says it is; access stays with the organization.
+function memberOutcomeText(): string {
+  return 'Your Aramo Sign sessions were signed out and your own Sign data (saved signatures, contacts, notifications) deleted. Your access to Aramo Sign is managed by your organization. Documents your organization sent or that you received in your role stay under your organization’s authority; we referred your request to it.';
 }
