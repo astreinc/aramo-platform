@@ -3288,8 +3288,6 @@
     "apps/sign-web/src/workspace/pages/EnvelopeList.tsx",
     "apps/sign-web/src/workspace/pages/EnvelopeMessage.spec.tsx",
     "apps/sign-web/src/workspace/pages/EnvelopeWizard.tsx",
-    "apps/sign-web/src/workspace/pages/EnvelopeWizard.tsx",
-    "apps/sign-web/src/workspace/pages/EnvelopeWizard.tsx",
     "apps/sign-web/src/workspace/pages/EnvelopeWizardContacts.spec.ts",
     "apps/sign-web/src/workspace/pages/EnvelopeWizardSigners.spec.ts",
     "apps/sign-web/src/workspace/pages/FieldParityP2Detect.spec.tsx",
