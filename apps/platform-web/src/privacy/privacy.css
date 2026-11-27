@@ -1,0 +1,89 @@
+/* PRIV-ADMIN-1 §1.3 — Privacy › Requests (queue + detail). Builds on the Sign
+ * Personal layout (personal.css) and the theme token layer (--pw-*). */
+
+.pw-pr-banner {
+  margin: 0 0 14px;
+}
+.pw-pr-filters {
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+.pw-pr-select,
+.pw-pr-input {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--pw-line);
+  border-radius: 8px;
+  background: var(--pw-surface);
+  color: inherit;
+  font-size: var(--pw-fs-13);
+}
+.pw-pr-input {
+  width: 190px;
+  font-family: var(--pw-mono);
+}
+.pw-pr-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--pw-fs-13);
+}
+.pw-pr-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pw-pr-mono {
+  font-family: var(--pw-mono);
+  overflow-wrap: anywhere;
+}
+.pw-pr-code {
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-12, 12px);
+  color: var(--pw-muted);
+}
+.pw-pr-codes {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.pw-pr-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.pw-pr-head-badges {
+  margin-top: 8px;
+}
+.pw-pr-back {
+  display: inline-block;
+  margin-bottom: 12px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-13);
+  text-decoration: none;
+}
+.pw-pr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+.pw-pr-panel {
+  margin-bottom: 16px;
+}
+.pw-pr-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.pw-pr-unverified {
+  color: var(--pw-muted);
+  font-style: italic;
+}
+.pw-pr-payload {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}

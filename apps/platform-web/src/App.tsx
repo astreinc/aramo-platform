@@ -23,6 +23,8 @@ import { MatchingPolicyView } from './matching/MatchingPolicyView';
 import { PersonalReviewView } from './personal/PersonalReviewView';
 import { PersonalInviteView } from './personal/PersonalInviteView';
 import { SignAbuseReportsView } from './personal/SignAbuseReportsView';
+import { PrivacyRequestDetailView } from './privacy/PrivacyRequestDetailView';
+import { PrivacyRequestsView } from './privacy/PrivacyRequestsView';
 import { PlatformAdminsView } from './admins/PlatformAdminsView';
 import { COMMERCIAL_PERMISSIONS as CP } from './components/permissions';
 import { ApprovalsInboxView } from './commercial/ApprovalsInboxView';
@@ -182,6 +184,15 @@ export function PlatformConsole({ session }: { readonly session: Session }) {
         <Route
           path="/sign-abuse-reports"
           element={gate(P.tenantLifecycleManage, 'Abuse reports', <SignAbuseReportsView />)}
+        />
+        {/* PRIV-ADMIN-1 §1.3 (OD-8, OD-9) — Privacy › Requests, same scope as the API. */}
+        <Route
+          path="/privacy-requests"
+          element={gate(P.tenantLifecycleManage, 'Requests', <PrivacyRequestsView session={session} />)}
+        />
+        <Route
+          path="/privacy-requests/:id"
+          element={gate(P.tenantLifecycleManage, 'Requests', <PrivacyRequestDetailView session={session} />)}
         />
         {/* PLATFORM-UX-1 (directive R-12) — Platform admins at /admins (never under
             /platform/, which nginx proxies to the backend). */}
