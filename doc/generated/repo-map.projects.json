@@ -12496,6 +12496,12 @@
         "status": "excluded"
       },
       {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/WebWordUpload.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
         "excludedBy": "src/**/*.spec.ts",
         "from": "apps/sign-web/src/workspace/pages/field-config.spec.ts",
         "project": "aramo-sign-web",
