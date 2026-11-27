@@ -3,7 +3,7 @@ import { CLOUD_EXPORT_FOLDER, CLOUD_PROVIDER_LABELS, CLOUD_STORAGE_COPY, cloudCo
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { errorMessage } from '../api';
+import { errorMessage, type UploadedDocument } from '../api';
 import { cloudApi, navigateTo, type CloudApi, type CloudItem, type CloudProviderRow } from '../cloud-storage-api';
 import { Bare, Btn, ErrorBox, Icon, LinkBtn, Loading, TextIn, fmtBytes, fmtDate } from '../ui';
 import { useWorkspace } from '../workspace';
@@ -288,7 +288,8 @@ export function CloudImportButton({
   go = navigateTo,
 }: {
   envelopeId: string;
-  onImported: () => void | Promise<void>;
+  /** The imported document (its attached-files count included, PDF-ATTACH-1) and the cloud file name. */
+  onImported: (uploaded: UploadedDocument, name: string) => void | Promise<void>;
   api?: CloudApi;
   go?: (url: string) => void;
 }) {
@@ -314,10 +315,10 @@ export function CloudImportButton({
     setBusy(`Adding ${f.name}…`);
     setError(null);
     try {
-      await api.importFile(envelopeId, provider, f.id);
+      const uploaded = await api.importFile(envelopeId, provider, f.id);
       setOpen(false);
       setProvider(null);
-      await onImported();
+      await onImported(uploaded, f.name);
     } catch (e) {
       // The grant was revoked or expired: back to the provider list to connect again.
       if (e instanceof ApiError && e.status === 409) setProvider(null);

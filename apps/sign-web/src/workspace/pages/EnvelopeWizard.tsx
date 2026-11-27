@@ -46,6 +46,7 @@ import {
   type RecipientKind,
   type RecipientMessaging,
   type RoutingMode,
+  type UploadedDocument,
   validAccessCode,
 } from '../api';
 import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, LinkBtn, Loading, RecipientPill, Sel, TextIn, fmtBytes } from '../ui';
@@ -217,6 +218,14 @@ function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange:
     await afterUpload();
   };
 
+  // S6 + PDF-ATTACH-1 — a cloud import goes through the same upload, so it shows the same notice when
+  // the PDF's attached files were removed.
+  const afterCloudImport = async (uploaded: UploadedDocument, name: string) => {
+    const notice = attachmentsRemovedNotice(uploaded.attachments_removed);
+    setNotices(notice === null ? [] : [`${name}: ${notice}`]);
+    await afterUpload();
+  };
+
   // After an upload (from the device or from cloud storage): read the envelope again.
   const afterUpload = async () => {
     let d = await senderApi.detail(env.id);
@@ -284,7 +293,7 @@ function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange:
                   Use a template
                 </Btn>
               ) : null}
-              <CloudImportButton envelopeId={env.id} onImported={afterUpload} />
+              <CloudImportButton envelopeId={env.id} onImported={afterCloudImport} />
             </div>
           ) : null}
           {busy !== '' ? (

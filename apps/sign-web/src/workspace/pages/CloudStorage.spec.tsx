@@ -104,7 +104,8 @@ describe('Envelope wizard → From cloud storage', () => {
     await waitFor(() => expect(api.items).toHaveBeenLastCalledWith('box', { folder_id: 'f1', q: null, cursor: null, folders: false }));
     fireEvent.click(await screen.findByTestId('cloud-item-p1'));
     await waitFor(() => expect(api.importFile).toHaveBeenCalledWith('e1', 'box', 'p1'));
-    await waitFor(() => expect(onImported).toHaveBeenCalled());
+    // PDF-ATTACH-1 — the wizard gets the upload result (its attached-files count) and the file name.
+    await waitFor(() => expect(onImported).toHaveBeenCalledWith({ id: 'doc', revision: 3 }, 'Offer.pdf'));
   });
 
   it('a provider not yet connected offers Connect, returning to the wizard', async () => {
