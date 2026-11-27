@@ -707,7 +707,9 @@ describe('SafePdfPipeline (B6 — governed upload safety)', () => {
     expect(accepted.byteLength).toBe(benign.byteLength);
   });
 
-  it.each(['/AA<<', '/AA <<', '/JS (app.alert(1))', '/JavaScript', '/Launch', '/EmbeddedFile\n', '/RichMedia[', '/OpenAction%c'])(
+  // PDF-ATTACH-1 T-7 — /EmbeddedFile is no longer a script token: attached files are removed
+  // before the gate, and one still present is refused as 'attachments' (pdf-attachments.spec.ts).
+  it.each(['/AA<<', '/AA <<', '/JS (app.alert(1))', '/JavaScript', '/Launch', '/RichMedia[', '/OpenAction%c'])(
     'still rejects the whole-name active-content key in %j',
     async (snippet) => {
       const source = await makeSourcePdf();

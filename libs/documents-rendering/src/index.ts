@@ -43,6 +43,8 @@ export {
   type TextBoxLine,
 } from './lib/pdf-lib-document-rendering.adapter.js';
 export { SafePdfPipeline, type SafePdfLimits } from './lib/safe-upload.pipeline.js';
+// PDF-ATTACH-1 — the one rule for attached files (remove at upload; the gate refuses what remains).
+export { removePdfAttachments, findPdfAttachment, type PdfAttachmentRemoval } from './lib/pdf-attachments.js';
 export { RenderFailedError, InlineFieldTooWideError, UnsafePdfError, type PdfProblem } from './lib/errors.js';
 // FIELD-PARITY-1 P2-5 / P2-6 — fillable-PDF import (read, strip active content, flatten),
 // covering text tags, and the text layer / page frames (moved from apps/sign-service).
