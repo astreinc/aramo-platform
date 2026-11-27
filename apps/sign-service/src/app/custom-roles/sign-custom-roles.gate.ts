@@ -23,6 +23,11 @@ import { SIGN_CUSTOM_ROLES_FEATURE, SignFeatureGate } from '../sign-feature.gate
 export const SIGN_PLAN_FEATURE_READER = 'SIGN_PLAN_FEATURE_READER';
 export interface SignPlanFeatureReader {
   planFeatureEnabled(tenant_id: string, feature_key: string): Promise<boolean>;
+  /**
+   * SIGN-FREE-PARITY-1 S5 — the plan's explicit setting of a feature: true / false when the pinned version
+   * carries the key, null when it does not (or there is no open subscription). Optional for older fakes.
+   */
+  planFeatureSetting?(tenant_id: string, feature_key: string): Promise<boolean | null>;
 }
 
 @Injectable()
@@ -34,6 +39,14 @@ export class SubscriptionPlanFeatureReader implements SignPlanFeatureReader {
     const sub = account.subscription;
     if (sub === null || sub.ended_at !== null) return false;
     return sub.features.some((f) => f.feature_key === feature_key && f.enabled);
+  }
+
+  async planFeatureSetting(tenant_id: string, feature_key: string): Promise<boolean | null> {
+    const account = await this.lifecycle.account(tenant_id, SIGN_PRODUCT_KEY, ESIGN_ENVELOPE_ALLOWANCE);
+    const sub = account.subscription;
+    if (sub === null || sub.ended_at !== null) return null;
+    const f = sub.features.find((x) => x.feature_key === feature_key);
+    return f === undefined ? null : f.enabled;
   }
 }
 

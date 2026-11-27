@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
 import { SignMessagingRepository, isE164, isTimeZone, maskPhone, recipientKindOf, type MessagingChannel } from '@aramo/sign';
@@ -8,6 +8,7 @@ import { SenderContextService } from '../sender/sender-context.service.js';
 import { SenderEnvelopeService } from '../sender/sender-envelope.service.js';
 
 import { SignMessagingService } from './sign-messaging.service.js';
+import { SignWhatsappPlanGate } from './whatsapp-plan.gate.js';
 
 // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.7 / §1.8 / §1.9 — the sender's
 // per-recipient messaging choice (Amendment A1: dark). In a DRAFT the sender chooses, for a
@@ -41,7 +42,15 @@ export class SenderMessagingService {
     private readonly context: SenderContextService,
     private readonly envelopes: SenderEnvelopeService,
     private readonly features: SignFeatureGate,
+    // SIGN-FREE-PARITY-1 S5 — the per-plan WhatsApp entitlement (absent ⇒ launch availability only).
+    @Optional() private readonly whatsappPlan?: SignWhatsappPlanGate,
   ) {}
+
+  /** SIGN-FREE-PARITY-1 S5 — WhatsApp is offered only when launched AND the account's plan includes it. */
+  private async withPlan<T extends { whatsapp_delivery: boolean }>(tenant_id: string, a: T): Promise<T> {
+    if (!a.whatsapp_delivery || this.whatsappPlan === undefined) return a;
+    return { ...a, whatsapp_delivery: await this.whatsappPlan.entitled(tenant_id) };
+  }
 
   private availability() {
     return {
@@ -63,7 +72,7 @@ export class SenderMessagingService {
   }
 
   async get(auth: AuthContextType, envelope_id: string, requestId: string) {
-    const features = this.assertAnyAvailable(requestId);
+    const features = await this.withPlan(auth.tenant_id, this.assertAnyAvailable(requestId));
     await this.envelopes.assertVisible(auth, envelope_id, requestId);
     const [settings, deliveries] = await Promise.all([this.repo.settingsFor(auth.tenant_id, envelope_id), this.repo.deliveriesFor(auth.tenant_id, envelope_id)]);
     return {
@@ -126,6 +135,12 @@ export class SenderMessagingService {
       new AramoError('ESIGN_FEATURE_NOT_AVAILABLE', 'This feature is not available in Aramo Sign yet', 403, { requestId, details: { feature_key } });
     if (channel === 'SMS' && !this.features.isAvailable(SIGN_SMS_DELIVERY_FEATURE)) throw notAvailable(SIGN_SMS_DELIVERY_FEATURE);
     if (channel === 'WHATSAPP' && !this.features.isAvailable(SIGN_WHATSAPP_DELIVERY_FEATURE)) throw notAvailable(SIGN_WHATSAPP_DELIVERY_FEATURE);
+    if (channel === 'WHATSAPP' && this.whatsappPlan !== undefined && !(await this.whatsappPlan.entitled(auth.tenant_id))) {
+      throw new AramoError('ESIGN_FEATURE_NOT_AVAILABLE', 'WhatsApp delivery is not included in your plan', 403, {
+        requestId,
+        details: { feature_key: SIGN_WHATSAPP_DELIVERY_FEATURE, reason: 'not_in_plan' },
+      });
+    }
     if (otpRaw && !this.features.isAvailable(SIGN_SMS_OTP_FEATURE)) throw notAvailable(SIGN_SMS_OTP_FEATURE);
     const unreachable = (ch: MessagingChannel) =>
       new AramoError('ESIGN_FEATURE_NOT_AVAILABLE', `No ${ch === 'SMS' ? 'SMS' : 'WhatsApp'} provider can reach this number`, 503, {

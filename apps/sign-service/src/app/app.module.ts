@@ -179,6 +179,7 @@ import { outboundMessagingFromEnv } from './messaging/messaging-adapters.js';
 import { SignMessagingService } from './messaging/sign-messaging.service.js';
 import { RecipientOtpService } from './messaging/recipient-otp.service.js';
 import { SenderMessagingService } from './messaging/sender-messaging.service.js';
+import { SignWhatsappPlanGate } from './messaging/whatsapp-plan.gate.js';
 import { SignRecipientVerificationController, SignSenderMessagingController, SignSmsInboundWebhookController, SignWhatsAppWebhookController } from './messaging/sign-messaging.controller.js';
 // Aramo Sign 1.14 — payment collection through Stripe Connect (dark until enabled).
 import { SignPaymentService } from './payments/sign-payment.service.js';
@@ -365,6 +366,8 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
     // Aramo Sign Feature-Parity §1.21 — custom roles: launch availability + plan entitlement gate.
     SignCustomRolesGate,
     { provide: SIGN_PLAN_FEATURE_READER, useClass: SubscriptionPlanFeatureReader },
+    // SIGN-FREE-PARITY-1 S5 — WhatsApp is a per-plan feature.
+    SignWhatsappPlanGate,
     // Feature-Parity §1.13 — organization reports (dark behind sign.reports).
     SenderReportsService,
     // Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED — the Personal sending
