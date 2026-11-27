@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Dialog } from '@aramo/fe-foundation';
-import { SIGNABLE_ENVELOPE_STATUSES, senderActionsOf } from '@aramo/sign-client';
+import { ENVELOPE_DELETE_COPY, SIGNABLE_ENVELOPE_STATUSES, senderActionsOf } from '@aramo/sign-client';
 
 import { errorMessage, inboxApi, isInboxItemNotFound, senderApi, sourceLabel, type EnvelopeList as EnvelopeListData, type EnvelopeRow, type EnvelopeStatus } from '../api';
 import { Btn, Check, ErrorBox, Icon, LinkBtn, Loading, PurgeTag, Sel, StatusPill, TextIn, fmtDate, rel } from '../ui';
@@ -97,7 +97,7 @@ export function EnvelopeList({ folder, title, headActions }: { folder?: string; 
       if (pending.action === 'delete') await senderApi.deleteEnvelope(pending.row.id);
       else if (pending.action === 'delete-draft') await senderApi.deleteDraft(pending.row.id);
       else await senderApi.restoreEnvelope(pending.row.id);
-      toast(pending.action === 'delete' ? 'Moved to Deleted' : pending.action === 'delete-draft' ? 'Draft deleted' : 'Envelope restored');
+      toast(pending.action === 'delete' ? ENVELOPE_DELETE_COPY.deleted : pending.action === 'delete-draft' ? 'Draft deleted' : ENVELOPE_DELETE_COPY.restored);
       setPending(null);
       setReload((n) => n + 1);
       refreshCounts();
@@ -166,7 +166,7 @@ export function EnvelopeList({ folder, title, headActions }: { folder?: string; 
       </div>
       {deleted ? (
         <p className="sg-muted" style={{ marginTop: 0 }} data-testid="deleted-help">
-          Envelopes you deleted are hidden only for your organization. Recipients keep their copies. Restore an envelope to move it back.
+          {ENVELOPE_DELETE_COPY.deleted_help}
         </p>
       ) : null}
       {userFolder !== undefined ? (
@@ -237,7 +237,7 @@ export function EnvelopeList({ folder, title, headActions }: { folder?: string; 
                   <tr>
                     <td colSpan={7}>
                       <div className="sg-empty">
-                        <div className="sg-empty__t">{deleted ? 'Nothing in Deleted' : userFolder !== undefined ? 'No sent envelopes in this folder' : 'No envelopes here'}</div>
+                        <div className="sg-empty__t">{deleted ? ENVELOPE_DELETE_COPY.deleted_empty : userFolder !== undefined ? 'No sent envelopes in this folder' : 'No envelopes here'}</div>
                         {q !== '' ? 'Try a different filter.' : null}
                       </div>
                     </td>
@@ -345,13 +345,13 @@ export function EnvelopeList({ folder, title, headActions }: { folder?: string; 
             setActionError('');
           }
         }}
-        title={pending?.action === 'restore' ? 'Restore this envelope?' : pending?.action === 'delete-draft' ? 'Delete this draft?' : 'Delete this envelope?'}
+        title={pending?.action === 'restore' ? ENVELOPE_DELETE_COPY.restore_title : pending?.action === 'delete-draft' ? 'Delete this draft?' : ENVELOPE_DELETE_COPY.delete_title}
         description={
           pending?.action === 'restore'
-            ? 'It moves back to your envelopes.'
+            ? ENVELOPE_DELETE_COPY.restore_body
             : pending?.action === 'delete-draft'
               ? 'The draft and its documents are removed permanently. It was never sent, so no one else has a copy.'
-              : 'It moves to Deleted and is hidden for your organization only. Recipients keep their copies. You can restore it until it is purged.'
+              : ENVELOPE_DELETE_COPY.delete_body
         }
         size="sm"
         footer={

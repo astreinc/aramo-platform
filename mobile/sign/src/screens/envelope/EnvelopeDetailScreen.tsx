@@ -9,7 +9,7 @@
 // HostedSigning screen), when FEATURES.hostedSigning and the server's
 // features.in_person_signing allow it.
 import { useFocusEffect } from '@react-navigation/native';
-import { AUTO_REMINDER_COPY, autoReminderStatusLine, canSetAutoReminders, senderActionsOf } from '@aramo/sign-client';
+import { AUTO_REMINDER_COPY, ENVELOPE_DELETE_COPY, autoReminderStatusLine, canSetAutoReminders, senderActionsOf } from '@aramo/sign-client';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -68,6 +68,8 @@ import {
   useRecheckOnline,
   useSenderContext,
 } from '../../features/inbox/queries';
+import { moveSentToDeleted, restoreSentEnvelope } from '../../features/inbox/sentDeleted';
+import { confirmMoveToDeleted } from '../../features/inbox/SwipeActions';
 import { OPEN_STATUSES, type DetailRecipient, type LedgerEvent } from '../../features/inbox/types';
 import { EmptyState, ProgressBar, ReasonSheet, Segments } from '../../features/inbox/ui';
 import { MoveToFolderSheet } from '../../features/folders/FolderSheets';
@@ -140,6 +142,7 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
   const services = useServices();
   const { workspace } = services;
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [trashBusy, setTrashBusy] = useState(false);
   // SIGN-FREE-PARITY-1 S7 — "Move to folder" (the user's own folders).
   const [moving, setMoving] = useState<FolderTarget | null>(null);
   const online = useOnline();
@@ -352,6 +355,21 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
       toast.show(refusalMessage({ reason: 'revision_mismatch', code: 'revision_mismatch' }));
       await q.refetch();
     } else toast.show(r.message);
+  }
+
+  // APP-DELETED-1 (UAT DEL-09) — a finished envelope to the Deleted folder, or back from it.
+  // Shown only when the server's actions allow; a refusal shows the reason and refreshes.
+  async function doTrashOrRestore(kind: 'trash' | 'restore'): Promise<void> {
+    setTrashBusy(true);
+    const r = kind === 'trash' ? await moveSentToDeleted(workspace, envelopeId) : await restoreSentEnvelope(workspace, envelopeId);
+    setTrashBusy(false);
+    toast.show(r.message);
+    void qc.invalidateQueries({ queryKey: signKeys.senderList });
+    if (r.kind === 'done' && kind === 'trash') {
+      navigation.goBack();
+      return;
+    }
+    await q.refetch();
   }
 
   const toneColor = (tone: string) =>
@@ -584,6 +602,26 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
             onPress={() =>
               navigation.navigate('DocumentViewer', { envelopeId, kind: 'certificate' })
             }
+          />
+        ) : null}
+        {actions.restore ? (
+          <Button
+            testID="action-restore"
+            title={ENVELOPE_DELETE_COPY.restore_confirm}
+            variant="secondary"
+            busy={trashBusy}
+            disabled={!online}
+            onPress={() => void doTrashOrRestore('restore')}
+          />
+        ) : null}
+        {actions.moveToDeleted ? (
+          <Button
+            testID="action-move-to-deleted"
+            title={ENVELOPE_DELETE_COPY.delete_confirm}
+            variant="destructive"
+            busy={trashBusy}
+            disabled={!online}
+            onPress={() => confirmMoveToDeleted(() => void doTrashOrRestore('trash'))}
           />
         ) : null}
         <Button

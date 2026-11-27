@@ -6,6 +6,7 @@
 //   Continue editing   — actions.edit
 //   Delete draft       — actions.delete_draft (D-W6-3; a sent envelope is voided)
 //   View certificate   — actions.certificate
+//   Delete / Restore   — actions.delete / actions.restore (APP-DELETED-1: the Deleted folder)
 //   Host in person     — each recipient's server `hostable`
 import {
   nextReminderAt as sharedNextReminderAt,
@@ -29,6 +30,9 @@ export interface ActionSet {
   readonly viewCertificate: boolean;
   readonly remind: boolean;
   readonly void: boolean;
+  /** APP-DELETED-1 — move a finished envelope to Deleted / bring it back. */
+  readonly moveToDeleted: boolean;
+  readonly restore: boolean;
 }
 
 /** The detail screen's actions: the server's decision, nothing derived on the device. */
@@ -40,6 +44,8 @@ export function actionsFor(detail: SenderEnvelopeDetail): ActionSet {
     viewCertificate: a.certificate,
     remind: a.remind,
     void: a.void,
+    moveToDeleted: a.delete,
+    restore: a.restore,
   };
 }
 

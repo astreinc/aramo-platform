@@ -409,6 +409,13 @@ export {
   type FolderNameRefusal,
   type FolderCopyKey,
 } from './lib/folders.js';
+// APP-DELETED-1 — the sender's Deleted folder: delete / restore copy and routes (web and the app).
+export {
+  ENVELOPE_DELETE_COPY,
+  envelopeDeleteRoute,
+  envelopeRestoreRoute,
+  type EnvelopeDeleteCopyKey,
+} from './lib/envelope-delete.js';
 // SIGN-FREE-PARITY-1 S3 — the signer's one-time code (SMS or email): copy, routes, refusals.
 export {
   EMAIL_CODE_OPTION,

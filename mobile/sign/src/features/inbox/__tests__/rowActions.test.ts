@@ -45,6 +45,21 @@ describe('swipeActionsFor (state + server permissions)', () => {
     for (const s of ENVELOPE_STATUSES) expect(kinds(sentRow(sent(s)))).toEqual(expected[s]);
   });
 
+  // APP-DELETED-1 (UAT DEL-09) — Delete to the Deleted folder only when the server's actions.delete.
+  it('a finished sent envelope offers Delete (trash) when the server allows it; an open one never', () => {
+    const done = sent('COMPLETED');
+    const allowed = sentRow({ ...done, actions: { ...done.actions!, delete: true } });
+    expect(kinds(allowed)).toEqual(['share', 'trash']);
+    expect(swipeActionsFor(allowed, on).find((a) => a.kind === 'trash')).toMatchObject({ label: 'Delete', tone: 'destructive' });
+    for (const s of ['DECLINED', 'VOIDED', 'EXPIRED'] as const) {
+      const e = sent(s);
+      expect(kinds(sentRow({ ...e, actions: { ...e.actions!, delete: true } }))).toEqual(['trash']);
+    }
+    // A waiting envelope: the server says no (DEL-09 Part C), so no Delete.
+    expect(kinds(sentRow(sent('IN_PROGRESS')))).not.toContain('trash');
+    expect(kinds(allowed, { ...on, online: false })).toEqual([]);
+  });
+
   it('Needs me = Sign, fed only by the inbox `can_sign`', () => {
     expect(kinds(recvRow(received({ can_sign: true })))).toEqual(['sign']);
     expect(kinds(recvRow(received({ can_sign: false, my_status: 'PENDING' })))).toEqual([]);

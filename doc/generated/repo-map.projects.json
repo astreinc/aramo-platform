@@ -2774,6 +2774,7 @@
       "EMAIL_PATTERN",
       "ENVELOPE_ALLOWANCE_KEY",
       "ENVELOPE_CHANGED",
+      "ENVELOPE_DELETE_COPY",
       "ENVELOPE_MESSAGE_MAX",
       "ENVELOPE_NOT_AVAILABLE",
       "ENVELOPE_SUBJECT_MAX",
@@ -2892,7 +2893,9 @@
       "dateBoundsOf",
       "dropdownChoicesOf",
       "duplicateWitness",
+      "envelopeDeleteRoute",
       "envelopeOpenForSigning",
+      "envelopeRestoreRoute",
       "evaluateSignerFieldRules",
       "fieldConditionIssues",
       "fieldConditionOf",
@@ -15480,6 +15483,11 @@
         "status": "unscoped"
       },
       {
+        "from": "mobile/sign/src/features/inbox/SwipeActions.tsx",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
         "from": "mobile/sign/src/features/inbox/__tests__/envelopeActions.test.ts",
         "project": "sign-mobile",
         "status": "unscoped"
@@ -15621,6 +15629,11 @@
       },
       {
         "from": "mobile/sign/src/features/templates/templatesModel.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/screens/agreements/DeletedInboxScreen.tsx",
         "project": "sign-mobile",
         "status": "unscoped"
       },

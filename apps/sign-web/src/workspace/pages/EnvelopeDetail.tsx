@@ -5,6 +5,7 @@ import {
   AUTO_REMINDER_COPY,
   SIGNABLE_ENVELOPE_STATUSES,
   VOID_REASON_COPY,
+  ENVELOPE_DELETE_COPY,
   VOID_REASON_MAX,
   autoReminderStatusLine,
   canSetAutoReminders,
@@ -28,7 +29,7 @@ import { CloudExportButton } from './CloudStorage';
 // email. A DRAFT the caller may edit routes back to the wizard.
 
 /** UAT DEL-09 — why an open envelope has no working Delete (same words in the list). */
-export const DELETE_WHEN_FINISHED = 'Finish or void this envelope before deleting it.';
+export const DELETE_WHEN_FINISHED = ENVELOPE_DELETE_COPY.delete_when_finished;
 
 // W1 — the self-sign refusals: the shared refusal copy (@aramo/sign-client) keys them by reason.
 export function selfSignRefusal(e: unknown): string {
@@ -223,7 +224,7 @@ export function EnvelopeDetail() {
       setDeleteOpen(false);
       refreshCounts();
       navigate(`${base}/envelopes`);
-    }, 'Moved to Deleted');
+    }, ENVELOPE_DELETE_COPY.deleted);
   const doPurge = () =>
     runAction(async () => {
       setEnv(await senderApi.queuePurge(env.id, purgeLevel));
@@ -539,8 +540,8 @@ export function EnvelopeDetail() {
           setDeleteOpen(o);
           if (!o) setActionError('');
         }}
-        title="Delete this envelope?"
-        description="It moves to Deleted and is hidden for your organization only. Recipients keep their copies. You can restore it until it is purged."
+        title={ENVELOPE_DELETE_COPY.delete_title}
+        description={ENVELOPE_DELETE_COPY.delete_body}
         size="sm"
         footer={
           <>
