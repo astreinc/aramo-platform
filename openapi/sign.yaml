@@ -5030,6 +5030,122 @@ paths:
           $ref: '#/components/responses/SenderForbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /v1/sign/personal/step-up/status:
+    get:
+      operationId: getSenderPhoneStepUpStatus
+      summary: Whether the signed-in sender can verify their phone to clear the new-account send check.
+      description: >
+        SIGN-FREE-PARITY-1 S2. A young PERSONAL account whose first send has more than one recipient is
+        asked for phone assurance (send refusal details.reason = phone_verification_required). available
+        is true only while self-serve is switched on (SIGN_SENDER_PHONE_STEP_UP=1), an SMS provider serves
+        the number and the caller is the owner; otherwise the step-up goes to manual review as before.
+        required is true while the phone step is outstanding. phone_masked is the number from signup,
+        masked, or null when the sender must enter one. Requires a Sign session of a tenant entitled to `sign`.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderPhoneStepUpStatus'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/personal/step-up/send:
+    post:
+      operationId: sendSenderPhoneStepUpCode
+      summary: Text a 6-digit code to the sender's phone.
+      description: >
+        SIGN-FREE-PARITY-1 S2. Texts a code (valid 10 minutes) to the number from signup, or to phone when
+        given (E.164; the same country rules as signup). A new code after 60 seconds, at most 5 a day. The
+        code is never returned. details.reason: step_up_not_available (404, self-serve off),
+        step_up_owner_only (403), step_up_not_required, phone_required, invalid_phone,
+        personal_location_not_supported, phone_in_use, personal_code_rate_limited, phone_opted_out (400),
+        step_up_sms_not_sent (503), personal_review_pending (403: no provider serves this number, so the
+        account was sent to manual review). Requires a Sign session of a tenant entitled to `sign`.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone:
+                  type: string
+                  description: Another mobile number in E.164; omitted = the number from signup.
+      responses:
+        '200':
+          description: The code was texted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderPhoneStepUpSent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: The SMS provider did not take the text (details.reason = step_up_sms_not_sent).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/personal/step-up/verify:
+    post:
+      operationId: verifySenderPhoneStepUpCode
+      summary: Check the texted code; a correct code verifies the phone so the next send passes.
+      description: >
+        SIGN-FREE-PARITY-1 S2. details.reason: code_invalid (attempts_remaining), code_expired,
+        code_attempts_exceeded, step_up_not_required (400), step_up_owner_only (403),
+        step_up_not_available (404). Requires a Sign session of a tenant entitled to `sign`.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  pattern: '^[0-9]{6}$'
+      responses:
+        '200':
+          description: The phone is verified.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [verified]
+                properties:
+                  verified:
+                    type: boolean
+                    enum: [true]
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/sign/me/privacy-requests:
     get:
       operationId: listMyPrivacyRequests
@@ -9602,6 +9718,33 @@ components:
         closed_at:
           type: [string, 'null']
           format: date-time
+    SenderPhoneStepUpStatus:
+      type: object
+      description: SIGN-FREE-PARITY-1 S2 — the sender's own phone step-up.
+      required: [available, required, phone_masked]
+      properties:
+        available:
+          type: boolean
+          description: Self-serve phone verification is on for this account.
+        required:
+          type: boolean
+          description: A phone step is outstanding (sending waits for it).
+        phone_masked:
+          type: [string, 'null']
+          description: The number a code goes to, masked; null when the sender must enter one.
+    SenderPhoneStepUpSent:
+      type: object
+      required: [sent, phone_masked, expires_in_seconds, resend_after_seconds]
+      properties:
+        sent:
+          type: boolean
+          enum: [true]
+        phone_masked:
+          type: string
+        expires_in_seconds:
+          type: integer
+        resend_after_seconds:
+          type: integer
     SignPrivacyRequest:
       type: object
       description: Aramo-Sign-Mobile-Amendment-M-A7 §3.1 — a privacy request as its requester sees it.

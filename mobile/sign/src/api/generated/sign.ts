@@ -2339,6 +2339,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/personal/step-up/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether the signed-in sender can verify their phone to clear the new-account send check.
+         * @description SIGN-FREE-PARITY-1 S2. A young PERSONAL account whose first send has more than one recipient is asked for phone assurance (send refusal details.reason = phone_verification_required). available is true only while self-serve is switched on (SIGN_SENDER_PHONE_STEP_UP=1), an SMS provider serves the number and the caller is the owner; otherwise the step-up goes to manual review as before. required is true while the phone step is outstanding. phone_masked is the number from signup, masked, or null when the sender must enter one. Requires a Sign session of a tenant entitled to `sign`.
+         */
+        get: operations["getSenderPhoneStepUpStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/personal/step-up/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Text a 6-digit code to the sender's phone.
+         * @description SIGN-FREE-PARITY-1 S2. Texts a code (valid 10 minutes) to the number from signup, or to phone when given (E.164; the same country rules as signup). A new code after 60 seconds, at most 5 a day. The code is never returned. details.reason: step_up_not_available (404, self-serve off), step_up_owner_only (403), step_up_not_required, phone_required, invalid_phone, personal_location_not_supported, phone_in_use, personal_code_rate_limited, phone_opted_out (400), step_up_sms_not_sent (503), personal_review_pending (403: no provider serves this number, so the account was sent to manual review). Requires a Sign session of a tenant entitled to `sign`.
+         */
+        post: operations["sendSenderPhoneStepUpCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/personal/step-up/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check the texted code; a correct code verifies the phone so the next send passes.
+         * @description SIGN-FREE-PARITY-1 S2. details.reason: code_invalid (attempts_remaining), code_expired, code_attempts_exceeded, step_up_not_required (400), step_up_owner_only (403), step_up_not_available (404). Requires a Sign session of a tenant entitled to `sign`.
+         */
+        post: operations["verifySenderPhoneStepUpCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/me/privacy-requests": {
         parameters: {
             query?: never;
@@ -4456,6 +4516,22 @@ export interface components {
             closed: boolean;
             /** Format: date-time */
             closed_at: string | null;
+        };
+        /** @description SIGN-FREE-PARITY-1 S2 — the sender's own phone step-up. */
+        SenderPhoneStepUpStatus: {
+            /** @description Self-serve phone verification is on for this account. */
+            available: boolean;
+            /** @description A phone step is outstanding (sending waits for it). */
+            required: boolean;
+            /** @description The number a code goes to, masked; null when the sender must enter one. */
+            phone_masked: string | null;
+        };
+        SenderPhoneStepUpSent: {
+            /** @enum {boolean} */
+            sent: true;
+            phone_masked: string;
+            expires_in_seconds: number;
+            resend_after_seconds: number;
         };
         /** @description Aramo-Sign-Mobile-Amendment-M-A7 §3.1 — a privacy request as its requester sees it. */
         SignPrivacyRequest: {
@@ -10391,6 +10467,101 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SignAccountClosed"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getSenderPhoneStepUpStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderPhoneStepUpStatus"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    sendSenderPhoneStepUpCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description Another mobile number in E.164; omitted = the number from signup. */
+                    phone?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The code was texted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderPhoneStepUpSent"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description The SMS provider did not take the text (details.reason = step_up_sms_not_sent). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    verifySenderPhoneStepUpCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The phone is verified. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {boolean} */
+                        verified: true;
+                    };
                 };
             };
             400: components["responses"]["BadRequest"];

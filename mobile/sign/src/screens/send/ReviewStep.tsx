@@ -6,6 +6,7 @@
 //   - "Before you send": the blocking warnings, the Personal limit and the backend's
 //     refusal reason. Send is disabled while any applies, offline, or busy.
 import { StyleSheet, Text, View } from 'react-native';
+import { PHONE_STEP_UP_REASON } from '@aramo/sign-client';
 
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
@@ -22,6 +23,9 @@ import {
 import { reviewWarnings } from '../../features/send/reviewWarnings';
 import type { SendFlowController, SendFlowState } from '../../features/send/sendFlowController';
 import { ErrorText, StepTitle, TextField } from '../../features/send/ui';
+import type { WorkspaceClient } from '../../api/workspaceClient';
+
+import { PhoneStepUpCard } from './PhoneStepUpCard';
 
 export const SIGNING_LINK_DAYS_DEFAULT = 7;
 
@@ -42,6 +46,7 @@ export function ReviewStep({
   online,
   onSend,
   onSaveDraft,
+  workspace,
 }: {
   readonly controller: SendFlowController;
   readonly state: SendFlowState;
@@ -49,6 +54,8 @@ export function ReviewStep({
   readonly online: boolean;
   readonly onSend: () => void;
   readonly onSaveDraft: () => void;
+  /** SIGN-FREE-PARITY-1 S2 — offers the phone step-up after a phone_verification_required refusal. */
+  readonly workspace?: WorkspaceClient;
 }) {
   const t = useTheme();
   const p = state.draft?.payload;
@@ -138,6 +145,15 @@ export function ReviewStep({
             </Text>
           ))}
         </View>
+      ) : null}
+      {workspace !== undefined && state.refusal?.reason === PHONE_STEP_UP_REASON ? (
+        <PhoneStepUpCard
+          workspace={workspace}
+          onVerified={() => {
+            controller.clearRefusal();
+            onSend();
+          }}
+        />
       ) : null}
       <ErrorText>{state.error}</ErrorText>
       {!online ? (

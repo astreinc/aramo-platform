@@ -309,6 +309,11 @@ export class SendFlowController {
     this.messagingEnabled = on;
   }
 
+  /** SIGN-FREE-PARITY-1 S2 — the phone step-up was cleared: the last refusal no longer applies. */
+  clearRefusal(): void {
+    this.set({ refusal: null, error: null });
+  }
+
   dismissNotice(): void {
     this.set({ notice: null });
   }
