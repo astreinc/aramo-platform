@@ -6184,6 +6184,11 @@ paths:
         Open requests by due date (30 days from receipt), or filtered. Counts-only inventory and
         completion evidence; no email in the list. Requires scope `platform:tenant:lifecycle:manage`
         and a platform session. `execution_enabled` reports SIGN_PRIVACY_DELETION_EXECUTION_ENABLED.
+        PRIV-ADMIN-1 §1.1: `limit` (1–500, default 200), `channel`, `subject_kind`, `assigned=me`
+        (assigned to the caller), `overdue=true` (open and past due), `reference` (exact; normalized
+        for case, spaces and the prefix; searched whatever the status; one that cannot exist
+        matches nothing). Each item carries `failing`: the failed execution attempts since the
+        request last entered EXECUTING (0 when it is not EXECUTING).
       security:
         - BearerAuth: []
         - CookieAccessAuth: []
@@ -6206,6 +6211,44 @@ paths:
           schema:
             type: string
             enum: ['true', 'false']
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 200
+        - name: channel
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [IN_APP, WEB, OPERATOR]
+        - name: subject_kind
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ACCOUNT_HOLDER, BUSINESS_MEMBER, GUEST_SIGNER, FORMER_USER, AUTHORIZED_REPRESENTATIVE]
+        - name: assigned
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [me]
+        - name: overdue
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ['true', 'false']
+        - name: reference
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 64
       responses:
         '200':
           description: Requests.
@@ -6218,7 +6261,15 @@ paths:
                   items:
                     type: array
                     items:
-                      $ref: '#/components/schemas/PlatformPrivacyRequest'
+                      allOf:
+                        - $ref: '#/components/schemas/PlatformPrivacyRequest'
+                        - type: object
+                          required: [failing]
+                          properties:
+                            failing:
+                              type: integer
+                              minimum: 0
+                              description: Failed execution attempts since the request last entered EXECUTING (0 when not EXECUTING).
                   execution_enabled:
                     type: boolean
         '400':
@@ -6284,11 +6335,13 @@ paths:
     get:
       operationId: getPrivacyRequest
       tags: [Platform Privacy]
-      summary: 'One privacy request with its append-only history and the requester''s contact email.'
+      summary: 'One privacy request with its append-only history (never the contact email).'
       description: >
         Aramo-Sign-Mobile-Amendment-M-A7 §3.3. Operator read of one privacy request: its current
-        state, its append-only event history and the requester's contact email. Unknown id answers
-        404.
+        state and its append-only event history. PRIV-ADMIN-1 OD-8: the contact email is not
+        returned; `contact_present` says whether one is stored and `POST .../reveal-contact` reveals
+        it (audited). `attempts` = failed execution attempts since the request last entered
+        EXECUTING (0 when it is not EXECUTING). Unknown id answers 404.
       security:
         - BearerAuth: []
         - CookieAccessAuth: []
@@ -6308,10 +6361,13 @@ paths:
                 allOf:
                   - $ref: '#/components/schemas/PlatformPrivacyRequest'
                   - type: object
-                    required: [contact_email, events, execution_enabled]
+                    required: [contact_present, attempts, events, execution_enabled]
                     properties:
-                      contact_email:
-                        type: [string, 'null']
+                      contact_present:
+                        type: boolean
+                      attempts:
+                        type: integer
+                        minimum: 0
                       execution_enabled:
                         type: boolean
                       events:
@@ -6336,7 +6392,7 @@ paths:
               schema:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
         '409':
-          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_execution_in_progress).'
+          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_request_wrong_status, privacy_deletion_completes_by_execution, privacy_referral_tenant_mismatch).'
           content:
             application/json:
               schema:
@@ -6391,7 +6447,7 @@ paths:
               schema:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
         '409':
-          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_execution_in_progress).'
+          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_request_wrong_status, privacy_deletion_completes_by_execution, privacy_referral_tenant_mismatch).'
           content:
             application/json:
               schema:
@@ -6448,7 +6504,7 @@ paths:
               schema:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
         '409':
-          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_execution_in_progress).'
+          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_request_wrong_status, privacy_deletion_completes_by_execution, privacy_referral_tenant_mismatch).'
           content:
             application/json:
               schema:
@@ -6493,7 +6549,7 @@ paths:
               schema:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
         '409':
-          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_execution_in_progress).'
+          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_request_wrong_status, privacy_deletion_completes_by_execution, privacy_referral_tenant_mismatch).'
           content:
             application/json:
               schema:
@@ -6503,7 +6559,11 @@ paths:
       operationId: referPrivacyRequest
       tags: [Platform Privacy]
       summary: '→ REFERRED_TO_ORGANIZATION (Aramo remains the accountable fallback).'
-      description: Requires scope `platform:tenant:lifecycle:manage` and a platform session; recorded with the operator as actor.
+      description: >
+        Requires scope `platform:tenant:lifecycle:manage` and a platform session; recorded with the
+        operator as actor. PRIV-ADMIN-1 §1.1: the organization must be the subject's tenant
+        (`organization_tenant_id` omitted = the subject's tenant); any other tenant answers 409
+        details.reason privacy_referral_tenant_mismatch.
       security:
         - BearerAuth: []
         - CookieAccessAuth: []
@@ -6553,7 +6613,7 @@ paths:
               schema:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
         '409':
-          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_execution_in_progress).'
+          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_request_wrong_status, privacy_deletion_completes_by_execution, privacy_referral_tenant_mismatch).'
           content:
             application/json:
               schema:
@@ -6610,7 +6670,7 @@ paths:
               schema:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
         '409':
-          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_execution_in_progress).'
+          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_request_wrong_status, privacy_deletion_completes_by_execution, privacy_referral_tenant_mismatch).'
           content:
             application/json:
               schema:
@@ -6619,8 +6679,14 @@ paths:
     post:
       operationId: completePrivacyRequest
       tags: [Platform Privacy]
-      summary: '→ COMPLETED with the operator-handled outcome (access, export, correction, or a referral outcome).'
-      description: Requires scope `platform:tenant:lifecycle:manage` and a platform session; recorded with the operator as actor.
+      summary: '→ COMPLETED with the operator-handled outcome (ACCESS, EXPORT or CORRECTION only).'
+      description: >
+        Requires scope `platform:tenant:lifecycle:manage` and a platform session; recorded with the
+        operator as actor. PRIV-ADMIN-1 OD-1: a DELETION is refused in every status (409
+        details.reason privacy_deletion_completes_by_execution): it completes only by execution, and
+        a referred deletion closes by execute or deny. OD-2: ACCESS / EXPORT / CORRECTION complete
+        from DATA_INVENTORY or REFERRED_TO_ORGANIZATION (otherwise 409 privacy_request_wrong_status).
+        The note becomes the requester-visible outcome text.
       security:
         - BearerAuth: []
         - CookieAccessAuth: []
@@ -6667,7 +6733,7 @@ paths:
               schema:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
         '409':
-          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_execution_in_progress).'
+          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_request_wrong_status, privacy_deletion_completes_by_execution, privacy_referral_tenant_mismatch).'
           content:
             application/json:
               schema:
@@ -6724,7 +6790,7 @@ paths:
               schema:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
         '409':
-          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_execution_in_progress).'
+          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_request_wrong_status, privacy_deletion_completes_by_execution, privacy_referral_tenant_mismatch).'
           content:
             application/json:
               schema:
@@ -6781,7 +6847,238 @@ paths:
               schema:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
         '409':
-          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_execution_in_progress).'
+          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_request_wrong_status, privacy_deletion_completes_by_execution, privacy_referral_tenant_mismatch).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+  /platform/privacy-requests/{id}/preview:
+    get:
+      operationId: previewPrivacyRequestExecution
+      tags: [Platform Privacy]
+      summary: 'Read-only impact preview of a DELETION (PRIV-ADMIN-1 §1.1). Writes nothing.'
+      description: >
+        The path execution would take now, from the same live rules: `personal_full` (Personal
+        owner, no dependency: full retirement), `personal_retain` (Personal owner with
+        dependencies: Sign data deleted, identity kept), `member` (Business member: sessions and
+        own convenience data; Sign access stays with the organization), or `not_executable` with
+        `reasons` (not_a_deletion, no_account_subject, subject_mismatch, legal_hold).
+        `dependencies` are the identity dependency inspector codes present (A_OTHER_PRODUCT,
+        B_OTHER_MEMBERSHIP, C_SHARED_IDENTITY, D_PLATFORM_ROLE, E_COGNITO_POOL), plus `unknown`
+        when a source cannot be read (`unknown_sources` names it: E_COGNITO_POOL, or `inspector`
+        when the inspection itself failed); an unreadable source never fails the preview, and the
+        path then shown is the one that deletes the most. Requires scope
+        `platform:tenant:lifecycle:manage` and a platform session.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The preview.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [path, reasons, dependencies, unknown_sources, execution_enabled]
+                properties:
+                  path:
+                    type: string
+                    enum: [personal_full, personal_retain, member, not_executable]
+                  reasons:
+                    type: array
+                    items:
+                      type: string
+                      enum: [not_a_deletion, no_account_subject, subject_mismatch, legal_hold]
+                  dependencies:
+                    type: array
+                    items:
+                      type: string
+                      enum: [A_OTHER_PRODUCT, B_OTHER_MEMBERSHIP, C_SHARED_IDENTITY, D_PLATFORM_ROLE, E_COGNITO_POOL, unknown]
+                  unknown_sources:
+                    type: array
+                    items:
+                      type: string
+                  execution_enabled:
+                    type: boolean
+        '400':
+          description: '`VALIDATION_ERROR` — a malformed body or filter.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          description: '`NOT_FOUND` — details.reason privacy_request_not_found.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+  /platform/privacy-requests/{id}/reveal-contact:
+    post:
+      operationId: revealPrivacyRequestContact
+      tags: [Platform Privacy]
+      summary: 'Reveal the requester''s contact email (PRIV-ADMIN-1 OD-8); writes a CONTACT_REVEALED event.'
+      description: >
+        The explicit, audited read of the contact email: every call writes a CONTACT_REVEALED event
+        with the operator as actor. `contact_email` is null when none is stored or the protection
+        key is not configured. Requires scope `platform:tenant:lifecycle:manage` and a platform
+        session.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The contact email.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [contact_email]
+                properties:
+                  contact_email:
+                    type: [string, 'null']
+        '400':
+          description: '`VALIDATION_ERROR` — a malformed body or filter.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          description: '`NOT_FOUND` — details.reason privacy_request_not_found.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+  /platform/privacy-requests/{id}/note:
+    post:
+      operationId: notePrivacyRequest
+      tags: [Platform Privacy]
+      summary: 'Add an operator note (NOTE event); never shown to the requester.'
+      description: Requires scope `platform:tenant:lifecycle:manage` and a platform session; recorded with the operator as actor. No status change.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [note]
+              properties:
+                note:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+      responses:
+        '200':
+          description: The request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformPrivacyRequest'
+        '400':
+          description: '`VALIDATION_ERROR` — a malformed body or filter.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          description: '`NOT_FOUND` — details.reason privacy_request_not_found.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+  /platform/privacy-requests/{id}/return-to-queue:
+    post:
+      operationId: returnPrivacyRequestToQueue
+      tags: [Platform Privacy]
+      summary: 'EXECUTING → DATA_INVENTORY by the operator (PRIV-ADMIN-1 OD-4); writes RETURNED_TO_QUEUE.'
+      description: >
+        For an executing request (for example one that keeps failing): it goes back to the operator
+        queue and nothing more is executed until it is executed again. A request that is not
+        EXECUTING answers 409 privacy_request_wrong_status. Requires scope
+        `platform:tenant:lifecycle:manage` and a platform session; recorded with the operator as
+        actor.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [note]
+              properties:
+                note:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+      responses:
+        '200':
+          description: The request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformPrivacyRequest'
+        '400':
+          description: '`VALIDATION_ERROR` — a malformed body or filter.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          description: '`NOT_FOUND` — details.reason privacy_request_not_found.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '409':
+          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_request_wrong_status).'
           content:
             application/json:
               schema:
