@@ -3326,6 +3326,7 @@
     "apps/sign-web/src/workspace/pages/TermChoice.tsx",
     "apps/sign-web/src/workspace/pages/UsageCharges.spec.tsx",
     "apps/sign-web/src/workspace/pages/UsageCharges.tsx",
+    "apps/sign-web/src/workspace/pages/WebWordUpload.spec.tsx",
     "apps/sign-web/src/workspace/pages/WorkspacePages.tsx",
     "apps/sign-web/src/workspace/pages/field-config.spec.ts",
     "apps/sign-web/src/workspace/pages/field-config.ts",
