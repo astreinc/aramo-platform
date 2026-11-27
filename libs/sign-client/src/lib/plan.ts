@@ -36,6 +36,8 @@ export interface SendFeatures {
   readonly sms: boolean;
   readonly whatsapp: boolean;
   readonly smsCode: boolean;
+  /** SIGN-FREE-PARITY-1 S3 — a code sent to the signer's email (every plan). */
+  readonly emailCode: boolean;
   readonly idCheck: boolean;
   readonly kba: boolean;
 }
@@ -47,6 +49,7 @@ export const NO_SEND_FEATURES: SendFeatures = {
   sms: false,
   whatsapp: false,
   smsCode: false,
+  emailCode: false,
   idCheck: false,
   kba: false,
 };
@@ -62,6 +65,7 @@ export function sendFeaturesOf(context: unknown): SendFeatures {
     sms: on('sms_delivery'),
     whatsapp: on('whatsapp_delivery'),
     smsCode: on('sms_otp'),
+    emailCode: on('email_otp'),
     idCheck: on('id_verification'),
     kba: on('kba'),
   };

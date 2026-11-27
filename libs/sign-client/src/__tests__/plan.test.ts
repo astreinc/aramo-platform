@@ -47,6 +47,7 @@ describe('per-recipient send options (row 15)', () => {
     ['sms_delivery', 'sms'],
     ['whatsapp_delivery', 'whatsapp'],
     ['sms_otp', 'smsCode'],
+    ['email_otp', 'emailCode'],
     ['id_verification', 'idCheck'],
     ['kba', 'kba'],
   ] as const)('features.%s → %s', (key, option) => {

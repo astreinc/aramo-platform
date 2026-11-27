@@ -3747,7 +3747,7 @@ export interface paths {
         put?: never;
         /**
          * The recipient-verification status of this signing session.
-         * @description Feature-Parity §1.9 — token-authorized. When the sender set SMS_OTP on the recipient, every other signer action (exchange, disclosure-text, document, source, disclosure, fill, complete, decline) is refused with 403 INSUFFICIENT_PERMISSIONS details.reason recipient_verification_required (or recipient_verification_locked) until a code is verified for this session.
+         * @description Feature-Parity §1.9 — token-authorized. When the sender set SMS_OTP (or, SIGN-FREE-PARITY-1 S3, EMAIL_OTP) on the recipient, every other signer action (exchange, disclosure-text, document, source, disclosure, fill, complete, decline) is refused with 403 INSUFFICIENT_PERMISSIONS details.reason recipient_verification_required (or recipient_verification_locked) until a code is verified for this session.
          */
         post: operations["getRecipientVerificationStatus"];
         delete?: never;
@@ -3790,6 +3790,46 @@ export interface paths {
          * @description Feature-Parity §1.9 — 400 otp_not_requested / otp_expired / otp_mismatch (attempts_remaining); 403 otp_code_locked (5 wrong attempts; ask for a new code) or otp_locked (3 codes used up; locked out of the envelope); 409 otp_retry. Appends RECIPIENT_OTP_VERIFIED / RECIPIENT_OTP_FAILED / RECIPIENT_OTP_LOCKED; the verification is printed on the certificate of completion.
          */
         post: operations["verifyRecipientSmsOtp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/signing/verification/email-otp/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a one-time code to the recipient's email.
+         * @description SIGN-FREE-PARITY-1 S3 — the SMS code's rules: 6 digits, valid 10 minutes, 5 attempts; at most one send per 60 seconds and 5 a day (429 INVALID_REQUEST otp_resend_cooldown / otp_daily_limit). 400 otp_not_required; 403 otp_locked after 3 codes were used up; 503 ESIGN_SEND_UNAVAILABLE otp_delivery_failed. The code is in the email body only. Appends RECIPIENT_OTP_SENT (method EMAIL_OTP, masked email).
+         */
+        post: operations["sendRecipientEmailOtp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/signing/verification/email-otp/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check the one-time code sent by email.
+         * @description SIGN-FREE-PARITY-1 S3 — as sms-otp/verify: 400 otp_not_requested / otp_expired / otp_mismatch (attempts_remaining); 403 otp_code_locked or otp_locked; 409 otp_retry. Appends RECIPIENT_OTP_VERIFIED / RECIPIENT_OTP_FAILED / RECIPIENT_OTP_LOCKED (method EMAIL_OTP); the verification is printed on the certificate of completion with the masked email.
+         */
+        post: operations["verifyRecipientEmailOtp"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4629,6 +4669,8 @@ export interface components {
                 whatsapp_delivery?: boolean;
                 /** @description Consolidated Directive v1.0 B2 — sign.sms_otp is available (the recipient enters an SMS code before acting; launch availability only, no plan rule). */
                 sms_otp?: boolean;
+                /** @description SIGN-FREE-PARITY-1 S3 — sign.email_otp is available (the recipient enters a code sent to their email before acting; every plan, launch availability only). */
+                email_otp?: boolean;
                 /** @description Consolidated Directive v1.0 B2 — sign.id_verification is available and the tenant is a BUSINESS tenant (government-ID check per recipient). */
                 id_verification?: boolean;
                 /** @description Consolidated Directive v1.0 B2 — sign.kba is available and the tenant is a BUSINESS tenant (knowledge-based questions per recipient). */
@@ -5164,6 +5206,8 @@ export interface components {
             identity_verification_method?: "ID_VERIFICATION" | "KBA" | null;
             /** @description §1.9 — true when identity verification locked this recipient out (a document in another name, or every attempt used). */
             identity_verification_locked?: boolean;
+            /** @description SIGN-FREE-PARITY-1 S3 — the recipient enters a one-time code sent to their email before signing. */
+            email_otp_required?: boolean;
         };
         /** @description Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 — the recipient's identity-verification state. Outcome only: no document data, image or verified name is ever returned or stored (R-5). */
         SignerIdentityVerificationStatus: {
@@ -5792,12 +5836,17 @@ export interface components {
         };
         RecipientVerificationStatus: {
             required: boolean;
-            /** @enum {string|null} */
-            method: "SMS_OTP" | null;
+            /**
+             * @description The code still to enter (SIGN-FREE-PARITY-1 S3: a recipient asked for both enters the SMS code first, then the email code; the session is verified only when both are), or the first required one once all are verified.
+             * @enum {string|null}
+             */
+            method: "SMS_OTP" | "EMAIL_OTP" | null;
             verified: boolean;
             locked: boolean;
             /** @description The masked number. */
             phone: string | null;
+            /** @description SIGN-FREE-PARITY-1 S3 — the masked email an email code goes to (j***@example.com). */
+            email?: string | null;
         };
         SenderRecipientMessaging: {
             /** Format: uuid */
@@ -8038,6 +8087,8 @@ export interface operations {
                          * @enum {string|null}
                          */
                         identity_verification_method?: "ID_VERIFICATION" | "KBA" | null;
+                        /** @description SIGN-FREE-PARITY-1 S3 — ask for a one-time code sent to the recipient's email before signing (every plan). true sets it, false clears it, omitted keeps it. SIGNER and WITNESS only (400 email_otp_not_allowed). Refused 403 ESIGN_FEATURE_NOT_AVAILABLE while sign.email_otp is not available. */
+                        email_otp_required?: boolean;
                     }[];
                 };
             };
@@ -13183,6 +13234,108 @@ export interface operations {
         };
         responses: {
             /** @description Verified for this session. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        verified: boolean;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description 403 INSUFFICIENT_PERMISSIONS — details.reason otp_code_locked or otp_locked. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: components["responses"]["Conflict"];
+        };
+    };
+    sendRecipientEmailOtp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SigningTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description The code was sent (or the email code is already verified for this session). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sent: boolean;
+                        verified: boolean;
+                        /** @description The masked email (j***@example.com). */
+                        email: string;
+                        /** Format: date-time */
+                        expires_at?: string | null;
+                        resend_after_seconds?: number;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description 403 INSUFFICIENT_PERMISSIONS — details.reason otp_locked. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 429 INVALID_REQUEST — details.reason otp_resend_cooldown (retry_after_seconds, retry_at) or otp_daily_limit. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 503 ESIGN_SEND_UNAVAILABLE — details.reason otp_delivery_failed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    verifyRecipientEmailOtp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                    code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The email code is verified for this session. */
             200: {
                 headers: {
                     [name: string]: unknown;

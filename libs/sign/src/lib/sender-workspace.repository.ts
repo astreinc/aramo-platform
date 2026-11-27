@@ -77,6 +77,9 @@ export interface SenderRecipientInput {
   // Feature-Parity §1.9 — the recipient's identity-verification method: a value sets it,
   // null clears it, omitted keeps it (a new recipient starts without one).
   identity_verification_method?: 'ID_VERIFICATION' | 'KBA' | null;
+  // SIGN-FREE-PARITY-1 S3 — ask for an email code before signing: a boolean sets it, omitted
+  // keeps it. A recipient who does not sign through a link never carries it (DB CHECK).
+  email_otp_required?: boolean;
 }
 
 export interface SenderFieldInput {
@@ -858,7 +861,7 @@ export class EsignSenderRepository {
       const extra = (r: SenderRecipientInput) => recipientExtraData(r, ids);
       for (const [i, r] of input.recipients.entries()) {
         if (r.id !== undefined) {
-          await tx.signer.update({ where: { id: r.id }, data: { name: r.name, email: r.email, signing_order: i + 1, ...recipientKindData(r), ...extra(r), ...identityVerificationData(r) } });
+          await tx.signer.update({ where: { id: r.id }, data: { name: r.name, email: r.email, signing_order: i + 1, ...recipientKindData(r), ...extra(r), ...identityVerificationData(r), ...emailOtpData(r) } });
         } else {
           await tx.signer.create({
             data: {
@@ -871,7 +874,7 @@ export class EsignSenderRepository {
               signer_role: null,
               status: 'PENDING',
               ...recipientKindData(r),
-              ...extra(r), ...identityVerificationData(r),
+              ...extra(r), ...identityVerificationData(r), ...emailOtpData(r),
             },
           });
         }
@@ -1028,6 +1031,14 @@ function recipientKindData(r: SenderRecipientInput): { recipient_kind: string; c
     copy_delivery: kind === 'RECEIVES_COPY' ? (r.copy_delivery ?? null) : null,
     bound_user_id: kind === 'RECEIVES_COPY' ? null : (r.bound_user_id ?? null),
   };
+}
+
+// SIGN-FREE-PARITY-1 S3 — the email-code column a PUT recipients item writes: omitted keeps
+// the stored value; a recipient who does not sign through a link never carries it.
+function emailOtpData(r: SenderRecipientInput): { email_otp_required?: boolean } {
+  const kind = r.recipient_kind ?? 'SIGNER';
+  if (kind !== 'SIGNER' && kind !== 'WITNESS') return { email_otp_required: false };
+  return r.email_otp_required === undefined ? {} : { email_otp_required: r.email_otp_required };
 }
 
 // Feature-Parity §1.9 — the identity-verification column a PUT recipients item writes:

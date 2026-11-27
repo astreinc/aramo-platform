@@ -288,6 +288,16 @@
       "class": "PZ"
     },
     {
+      "method": "POST",
+      "path": "/v1/sign/signing/verification/email-otp/send",
+      "class": "PZ"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sign/signing/verification/email-otp/verify",
+      "class": "PZ"
+    },
+    {
       "method": "GET",
       "path": "/v1/sign/messaging/whatsapp/webhook",
       "class": "XP"

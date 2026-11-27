@@ -407,3 +407,15 @@ export {
   type FolderNameRefusal,
   type FolderCopyKey,
 } from './lib/folders.js';
+// SIGN-FREE-PARITY-1 S3 — the signer's one-time code (SMS or email): copy, routes, refusals.
+export {
+  EMAIL_CODE_OPTION,
+  SIGNER_CODE_COPY,
+  SIGNER_CODE_LOCKED,
+  SIGNER_CODE_ROUTE,
+  signerCodeMethodOf,
+  signerCodeSendRefusal,
+  signerCodeVerifyRefusal,
+  type SignerCodeCopy,
+  type SignerCodeMethod,
+} from './lib/signer-code.js';

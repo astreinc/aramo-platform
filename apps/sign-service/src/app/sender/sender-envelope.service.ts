@@ -74,6 +74,7 @@ import { PDFDocument } from 'pdf-lib';
 import { AramoSignStorageGate } from '../billing/aramo-sign-storage.gate.js';
 import {
   SIGN_ACCESS_CODE_FEATURE,
+  SIGN_EMAIL_OTP_FEATURE,
   SIGN_DELEGATE_SIGNING_FEATURE,
   SIGN_ID_VERIFICATION_FEATURE,
   SIGN_IN_PERSON_SIGNING_FEATURE,
@@ -659,6 +660,8 @@ export class SenderEnvelopeService {
         // whether verification locked them out (failed name match or every attempt used).
         identity_verification_method: s.identity_verification_method ?? null,
         identity_verification_locked: s.identity_verification_locked_at !== null,
+        // SIGN-FREE-PARITY-1 S3 — a code sent to the recipient's email is asked before signing.
+        email_otp_required: s.email_otp_required === true,
       })),
       fields: env.documents.flatMap((d) =>
         d.fields.map((f) => ({
@@ -1297,6 +1300,7 @@ export class SenderEnvelopeService {
       witness_for_index: number | null;
       access_code_hash?: string | null;
       identity_verification_method?: IdentityVerificationMethod | null;
+      email_otp_required?: boolean;
     }> = [];
     const list = body.recipients as unknown[];
     for (const [i, r] of list.entries()) {
@@ -1313,6 +1317,8 @@ export class SenderEnvelopeService {
       if (kind === 'WITNESS') await this.assertBusinessFeature(auth, SIGN_WITNESS_SIGNING_FEATURE, requestId);
       // §1.9 — the access code: a string sets it, null clears it, omitted keeps it.
       const accessCodeHash = this.accessCodeHashOf(o, kind, i, requestId);
+      // SIGN-FREE-PARITY-1 S3 — the email code: a boolean sets it, omitted keeps it.
+      const emailOtp = this.emailOtpOf(o, kind, i, requestId);
       // M-A5 §2.1 — copy_delivery is required iff RECEIVES_COPY.
       const cdRaw = o['copy_delivery'] ?? null;
       if (kind === 'RECEIVES_COPY' && (typeof cdRaw !== 'string' || !(COPY_DELIVERIES as readonly string[]).includes(cdRaw))) {
@@ -1361,6 +1367,7 @@ export class SenderEnvelopeService {
         witness_for_index: witnessFor,
         ...(accessCodeHash !== undefined ? { access_code_hash: accessCodeHash } : {}),
         ...(idv !== undefined ? { identity_verification_method: idv } : {}),
+        ...(emailOtp !== undefined ? { email_otp_required: emailOtp } : {}),
       });
     }
     // §1.17 — one witness per signer.
@@ -1396,6 +1403,22 @@ export class SenderEnvelopeService {
       throw bad(requestId, `recipient ${i + 1}: a witness attests for a signer`, { index: i, field: 'witness_for_index', reason: 'witness_for_invalid' });
     }
     return raw;
+  }
+
+  // SIGN-FREE-PARITY-1 S3 (FP-R4) — ask for a one-time code sent to the recipient's email before
+  // signing. Every plan (launch availability only). SIGNER and WITNESS only: they sign through a
+  // link and always have an email (the DB CHECK Signer_email_otp_check holds the same rule).
+  // undefined = omitted (keep); false clears it.
+  private emailOtpOf(o: Record<string, unknown>, kind: RecipientKind, i: number, requestId: string): boolean | undefined {
+    const raw = o['email_otp_required'];
+    if (raw === undefined || raw === null) return undefined;
+    if (typeof raw !== 'boolean') throw bad(requestId, `recipient ${i + 1}: email_otp_required must be true or false`, { index: i, field: 'email_otp_required' });
+    if (!raw) return false;
+    (this.features ?? new SignFeatureGate()).assertAvailable(SIGN_EMAIL_OTP_FEATURE, requestId);
+    if (kind !== 'SIGNER' && kind !== 'WITNESS') {
+      throw bad(requestId, `recipient ${i + 1}: an email code applies to a recipient who signs through a link`, { index: i, field: 'email_otp_required', reason: 'email_otp_not_allowed' });
+    }
+    return true;
   }
 
   // Feature-Parity §1.9 — the access code of one recipient, hashed (never stored or

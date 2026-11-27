@@ -87,6 +87,8 @@ export interface SenderContext {
     sms_delivery?: boolean;
     whatsapp_delivery?: boolean;
     sms_otp?: boolean;
+    // SIGN-FREE-PARITY-1 S3 — the email code for signers (every plan).
+    email_otp?: boolean;
     id_verification?: boolean;
     kba?: boolean;
   };
@@ -237,6 +239,8 @@ export interface Recipient {
   access_code_locked?: boolean;
   // §1.9 — the identity check required of this recipient (null = none).
   identity_verification_method?: IdentityVerificationMethod | null;
+  // SIGN-FREE-PARITY-1 S3 — a code sent to the recipient's email is asked before signing.
+  email_otp_required?: boolean;
   // §1.17 — the original recipient of a delegated slot.
   delegated_from?: { name: string | null; email: string | null; delegated_at: string } | null;
 }
@@ -265,6 +269,8 @@ export interface RecipientWrite {
   access_code?: string | null;
   // A value sets the check, null clears it, omitted keeps it.
   identity_verification_method?: IdentityVerificationMethod | null;
+  // SIGN-FREE-PARITY-1 S3 — true asks for an email code, false removes it, omitted keeps it.
+  email_otp_required?: boolean;
 }
 
 // E.164 and the access code rule (@aramo/sign-client — the server's own copy).

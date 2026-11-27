@@ -61,6 +61,9 @@ export const FEATURE_AVAILABILITY: Readonly<Record<string, FeatureAvailability>>
   'sign.sms_delivery': 'NOT_AVAILABLE',
   'sign.whatsapp_delivery': 'NOT_AVAILABLE',
   'sign.sms_otp': 'NOT_AVAILABLE',
+  // SIGN-FREE-PARITY-1 S3 (FP-R4, PO 2026-11-27) — a one-time code sent to the signer's email
+  // before signing. Every plan; no outside account needed (the Sign mailer sends it).
+  'sign.email_otp': 'AVAILABLE',
   // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 + Amendment A1 — recipient
   // identity verification by government ID (Stripe Identity) and KBA (no vendor selected).
   // Built dark; going live needs the vendor contract, counsel review (BIPA/DPDP) and a

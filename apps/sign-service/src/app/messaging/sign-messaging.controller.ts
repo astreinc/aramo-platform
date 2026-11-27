@@ -5,7 +5,7 @@ import type { Request } from 'express';
 import { AramoError, AramoExceptionFilter, RequestId } from '@aramo/common';
 import { AuthContext, type AuthContextType } from '@aramo/auth';
 import { EsignSenderBoundary } from '@aramo/identity';
-import { EsignService, isE164 } from '@aramo/sign';
+import { EMAIL_OTP_METHOD, EsignService, isE164 } from '@aramo/sign';
 
 import { toHttp } from '../esign-http.controller.js';
 import { logWebhookFailed, logWebhookRejected } from '../webhook-log.js';
@@ -29,6 +29,8 @@ import { SignMessagingService } from './sign-messaging.service.js';
 //     POST v1/sign/signing/verification                 the recipient-verification status
 //     POST v1/sign/signing/verification/sms-otp/send    send a one-time code
 //     POST v1/sign/signing/verification/sms-otp/verify  check it
+//     POST v1/sign/signing/verification/email-otp/send   (SIGN-FREE-PARITY-1 S3) a code by email
+//     POST v1/sign/signing/verification/email-otp/verify check it
 //   PROVIDER (no session; the Meta X-Hub-Signature-256 over the raw body)
 //     GET  v1/sign/messaging/whatsapp/webhook           Meta's subscription check
 //     POST v1/sign/messaging/whatsapp/webhook           inbound STOP / START + delivery statuses
@@ -101,6 +103,21 @@ export class SignRecipientVerificationController {
   verify(@Body() body: { token?: unknown; code?: unknown }, @RequestId() requestId: string) {
     const token = requireToken(body?.token, requestId);
     return this.run(requestId, async () => this.otp.verify(await this.service.resolveSession(token), body?.code, requestId));
+  }
+
+  // SIGN-FREE-PARITY-1 S3 — the same check with a code sent to the recipient's email.
+  @Post('email-otp/send')
+  @HttpCode(HttpStatus.OK)
+  sendEmail(@Body() body: { token?: unknown }, @RequestId() requestId: string) {
+    const token = requireToken(body?.token, requestId);
+    return this.run(requestId, async () => this.otp.send(await this.service.resolveSession(token), requestId, new Date(), EMAIL_OTP_METHOD));
+  }
+
+  @Post('email-otp/verify')
+  @HttpCode(HttpStatus.OK)
+  verifyEmail(@Body() body: { token?: unknown; code?: unknown }, @RequestId() requestId: string) {
+    const token = requireToken(body?.token, requestId);
+    return this.run(requestId, async () => this.otp.verify(await this.service.resolveSession(token), body?.code, requestId, new Date(), EMAIL_OTP_METHOD));
   }
 }
 

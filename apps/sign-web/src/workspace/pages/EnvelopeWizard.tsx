@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Input } from '@aramo/fe-foundation';
 import {
+  EMAIL_CODE_OPTION,
   PDF_PICKER_TYPES,
   PHONE_STEP_UP_REASON,
   REFUSAL_COPY,
@@ -368,6 +369,8 @@ interface DraftRecipient {
   accessCode?: string | null;
   // B2 / §1.9 — the identity check (null = none).
   idv: IdentityVerificationMethod | null;
+  // SIGN-FREE-PARITY-1 S3 — ask for a code sent to the recipient's email before signing.
+  emailOtp: boolean;
   // B2 / §1.7–§1.9 — the text-message choices; undefined = as saved on the server.
   msg?: Msg;
 }
@@ -423,6 +426,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
     witnessFor: r.recipient_kind === 'WITNESS' ? (r.witness_for_signer_id ?? null) : null,
     accessCodeSet: r.access_code_set === true,
     idv: r.identity_verification_method ?? null,
+    emailOtp: r.email_otp_required === true,
   });
   const [list, setList] = useState<DraftRecipient[]>(() => env.recipients.map(toDraft));
   // Consolidated Directive B2 — each control shows only while the sender context reports it available.
@@ -473,7 +477,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
       return;
     }
     setError('');
-    setList((l) => [...l, { key: `new-${(keyGen.current += 1)}`, name, email, kind, copy: 'ON_COMPLETION', assign: assign && kind === 'SIGNER', witnessFor: null, accessCodeSet: false, idv: null }]);
+    setList((l) => [...l, { key: `new-${(keyGen.current += 1)}`, name, email, kind, copy: 'ON_COMPLETION', assign: assign && kind === 'SIGNER', witnessFor: null, accessCodeSet: false, idv: null, emailOtp: false }]);
   };
   const myEmail = ctx.user.email?.trim().toLowerCase() ?? '';
   const isMine = (email: string) => myEmail !== '' && email.trim().toLowerCase() === myEmail;
@@ -490,7 +494,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
             kind,
             ...(kind === 'RECEIVES_COPY' || kind === 'WITNESS' ? { assign: false } : {}),
             witnessFor: kind === 'WITNESS' ? (r.witnessFor ?? firstSigner) : null,
-            ...(signsByLink(kind) ? {} : { accessCode: r.accessCodeSet ? null : undefined, idv: null }),
+            ...(signsByLink(kind) ? {} : { accessCode: r.accessCodeSet ? null : undefined, idv: null, emailOtp: false }),
           };
         }
         return !isSigning(kind) && r.witnessFor === key ? { ...r, witnessFor: null } : r;
@@ -520,6 +524,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
         (r.kind === 'SIGNER' && isMine(r.email)) !== was.assign ||
         r.witnessFor !== was.witnessFor ||
         r.idv !== was.idv ||
+        r.emailOtp !== was.emailOtp ||
         r.accessCode !== undefined
       );
     });
@@ -591,6 +596,10 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
             ...(r.accessCode !== undefined ? { access_code: r.accessCode === null ? null : r.accessCode.trim() } : {}),
             ...(r.idv !== (r.id !== undefined ? (env.recipients.find((x) => x.id === r.id)?.identity_verification_method ?? null) : null)
               ? { identity_verification_method: signsByLink(r.kind) ? r.idv : null }
+              : {}),
+            // SIGN-FREE-PARITY-1 S3 — the email code, sent only when changed (omitted keeps it).
+            ...(signsByLink(r.kind) && r.emailOtp !== (r.id !== undefined ? env.recipients.find((x) => x.id === r.id)?.email_otp_required === true : false)
+              ? { email_otp_required: r.emailOtp }
               : {}),
           })),
         );
@@ -778,6 +787,12 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                   </Field>
                 </div>
                 {options.accessCode && signsByLink(r.kind) ? <AccessCodeControl r={r} onChange={(accessCode) => upd(r.key, { accessCode })} /> : null}
+                {(options.emailCode || r.emailOtp) && signsByLink(r.kind) ? (
+                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }} title={EMAIL_CODE_OPTION.hint}>
+                    <Input unstyled type="checkbox" checked={r.emailOtp} onChange={(e) => upd(r.key, { emailOtp: e.target.checked })} data-testid="email-code" />
+                    {EMAIL_CODE_OPTION.label}
+                  </label>
+                ) : null}
                 {messagingOn && r.kind === 'SIGNER' ? <TextMessageControl r={r} msg={msgFor(r)} onChange={(m) => upd(r.key, { msg: m })} /> : null}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                   <span style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -1107,6 +1122,7 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
                       {r.recipient_kind === 'WITNESS' ? ` · witnesses ${env.recipients.find((x) => x.id === r.witness_for_signer_id)?.name ?? 'a signer'}` : ''}
                       {r.identity_verification_method != null ? ` · ${lowerFirst(IDV_LABEL[r.identity_verification_method])}` : ''}
                       {r.access_code_set === true ? ' · access code' : ''}
+                      {r.email_otp_required === true ? ' · email code' : ''}
                     </span>
                   </div>
                   <span className="sg-muted" style={{ fontSize: 12.5 }}>

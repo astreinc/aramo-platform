@@ -2746,6 +2746,7 @@
       "DELEGATE_REASON_MAX",
       "DROPDOWN_CHOICES_MAX",
       "E164_PATTERN",
+      "EMAIL_CODE_OPTION",
       "EMAIL_MAX",
       "EMAIL_PATTERN",
       "ENVELOPE_ALLOWANCE_KEY",
@@ -2813,6 +2814,9 @@
       "SENDER_HELD_PREFILL_TYPES",
       "SIGNABLE_ENVELOPE_STATUSES",
       "SIGNERS_FULL_MESSAGE",
+      "SIGNER_CODE_COPY",
+      "SIGNER_CODE_LOCKED",
+      "SIGNER_CODE_ROUTE",
       "SIGNER_FIELD_VALUE_COPY",
       "SIGNER_FIELD_VALUE_FALLBACK",
       "SIGNER_NAME_MODES",
@@ -2945,6 +2949,9 @@
       "signDatePreview",
       "signatureRequestSubject",
       "signerClearRefusal",
+      "signerCodeMethodOf",
+      "signerCodeSendRefusal",
+      "signerCodeVerifyRefusal",
       "signerFieldCaption",
       "signerFieldPlaceholder",
       "signerFieldTooltip",
@@ -9435,6 +9442,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-email-otp.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-event-grant.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -15049,6 +15062,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-email-otp.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-event-grant.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -15433,6 +15452,11 @@
       },
       {
         "from": "mobile/sign/src/screens/envelope/EnvelopeDetailScreen.tsx",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/screens/send/RecipientOptions.tsx",
         "project": "sign-mobile",
         "status": "unscoped"
       },
@@ -16028,6 +16052,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-custom-roles.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-email-otp.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

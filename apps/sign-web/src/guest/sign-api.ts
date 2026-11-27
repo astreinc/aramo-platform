@@ -4,7 +4,7 @@
 // Unified UX (signer handoff §6–§7): typed errors so each token state gets its
 // own screen, plus the existing document / source / decline endpoints.
 
-import { localTimeZone, type AnyFieldType, type FieldOptions, type ProfilePrefill } from '@aramo/sign-client';
+import { SIGNER_CODE_ROUTE, localTimeZone, type AnyFieldType, type FieldOptions, type ProfilePrefill, type SignerCodeMethod } from '@aramo/sign-client';
 
 import type { TextLayer } from './find.js';
 
@@ -127,6 +127,9 @@ export interface SmsCodeStatus {
   verified: boolean;
   locked: boolean;
   phone: string | null;
+  // SIGN-FREE-PARITY-1 S3 — the code still due (SMS before email) and the masked email.
+  method?: SignerCodeMethod | null;
+  email?: string | null;
 }
 
 /** A failed signer call. `code` is the server's error code, or NETWORK. */
@@ -298,15 +301,16 @@ export const signApi = {
   qesComplete(token: string, code: string, state: string): Promise<QesStep> {
     return post<QesStep>('qes/complete', { token, code, state });
   },
-  // Feature-Parity §1.9 — the SMS code (sender-set): status, send, verify.
+  // Feature-Parity §1.9 — the code the sender asked for (SMS, or S3 email): status, send, verify.
   smsCodeStatus(token: string): Promise<SmsCodeStatus> {
     return post<SmsCodeStatus>('verification', { token });
   },
-  smsCodeSend(token: string): Promise<{ sent: boolean; verified: boolean; phone: string | null }> {
-    return post<{ sent: boolean; verified: boolean; phone: string | null }>('verification/sms-otp/send', { token });
+  // SIGN-FREE-PARITY-1 S3 — the same code by SMS or by email (route from @aramo/sign-client).
+  signerCodeSend(token: string, method: SignerCodeMethod): Promise<{ sent: boolean; verified: boolean; phone?: string | null; email?: string | null }> {
+    return post<{ sent: boolean; verified: boolean; phone?: string | null; email?: string | null }>(`verification/${SIGNER_CODE_ROUTE[method]}/send`, { token });
   },
-  smsCodeVerify(token: string, code: string): Promise<{ verified: true }> {
-    return post<{ verified: true }>('verification/sms-otp/verify', { token, code });
+  signerCodeVerify(token: string, method: SignerCodeMethod, code: string): Promise<{ verified: true }> {
+    return post<{ verified: true }>(`verification/${SIGNER_CODE_ROUTE[method]}/verify`, { token, code });
   },
   // Sign 1.14 — pay a PAYMENT field on Stripe's hosted Checkout page (the organization's
   // own Stripe account), then confirm on return. The server is the only authority.

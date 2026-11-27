@@ -786,6 +786,11 @@ export class SendFlowController {
     );
   }
 
+  /** SIGN-FREE-PARITY-1 S3 — ask for a code sent to their email before signing (link signers). */
+  setEmailCode(key: string, on: boolean): void {
+    this.patchRecipient(key, (r) => (takesLinkChecks(r) ? { ...r, emailOtp: on } : null), { recipients: true });
+  }
+
   /** Feature-Parity §1.7–§1.9 — text delivery, the SMS code and the phone (SIGNER only). */
   setMessaging(key: string, patch: Partial<RecipientMessaging>): void {
     this.patchRecipient(

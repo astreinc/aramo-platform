@@ -63,6 +63,24 @@ describe('B2 — recipients on the wire', () => {
     expect(cleared).toMatchObject({ access_code: null, identity_verification_method: null });
   });
 
+  // SIGN-FREE-PARITY-1 S3 — the email code: sent once set (on or off), omitted otherwise, never
+  // for a recipient who does not sign through a link; a kind change away from the link kinds drops it.
+  it('the email code goes for link signers once set; a copy recipient never carries it', () => {
+    const [on, off, untouched, cc] = recipientsToWire([
+      r('a', 'SIGNER', { emailOtp: true }),
+      r('b', 'WITNESS', { emailOtp: false, witnessForKey: 'a' }),
+      r('c', 'SIGNER'),
+      r('d', 'RECEIVES_COPY', { copyDelivery: 'ON_COMPLETION', emailOtp: true }),
+    ]);
+    expect(on).toMatchObject({ email_otp_required: true });
+    expect(off).toMatchObject({ email_otp_required: false });
+    expect(untouched).not.toHaveProperty('email_otp_required');
+    expect(cc).not.toHaveProperty('email_otp_required');
+    const out = changeKind([r('a', 'SIGNER', { emailOtp: true })], 'a', 'RECEIVES_COPY');
+    expect(out.ok && out.recipients[0]!.emailOtp).toBe(false);
+    expect(sendFeaturesOf({ features: { email_otp: true } }).emailCode).toBe(true);
+  });
+
   it('a recipient leaving the link kinds drops its code, identity check, text delivery and any witness pointing at it', () => {
     const list = [
       r('a', 'SIGNER', {

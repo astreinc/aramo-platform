@@ -61,12 +61,13 @@ import {
   classifySigningError,
   identityCheckStatus,
   IDENTITY_COPY,
-  sendSmsCode,
+  sendSignerCode,
+  SIGNER_STEP_COPY,
   SMS_CODE_COPY,
-  smsCodePhone,
+  signerCodeStatus,
   startIdentityCheck,
   submitAccessCode,
-  verifySmsCode,
+  verifySignerCode,
   declineSigning,
   DELEGATE_COPY,
   SIGNING_REPORT_COPY,
@@ -86,6 +87,8 @@ import {
   waitingForCopy,
   type Disclosure,
   type IdentityOutcome,
+  type SignerCodeMethod,
+  type SignerCodeState,
   type SignerView,
   type SmsOutcome,
 } from './signingApi';
@@ -611,9 +614,9 @@ export function SigningFlow(props: SigningFlowProps) {
   if (phase.kind === 'smscode' && session) {
     return (
       <SmsCodeStep
-        loadPhone={() => smsCodePhone(session)}
-        send={() => sendSmsCode(session)}
-        verify={(code) => verifySmsCode(session, code)}
+        loadStatus={() => signerCodeStatus(session)}
+        send={(method) => sendSignerCode(session, method)}
+        verify={(method, code) => verifySignerCode(session, method, code)}
         onVerified={open}
         onLocked={() =>
           setPhase({ kind: 'ended', title: SMS_CODE_COPY.lockedTitle, message: SMS_CODE_COPY.lockedBody })
@@ -1403,35 +1406,57 @@ function StepMessage({ text }: { readonly text: string | null }) {
   );
 }
 
-/** UAT SEC-04 follow-up — the SMS code step (the web signer page's copy and behaviour). */
+/**
+ * UAT SEC-04 follow-up — the SMS code step (the web signer page's copy and behaviour).
+ * SIGN-FREE-PARITY-1 S3 — the same step for a code sent to the signer's email. The server's
+ * status names the code still due (SMS before email); a signer asked for both enters both.
+ */
 function SmsCodeStep({
-  loadPhone,
+  loadStatus,
   send,
   verify,
   onVerified,
   onLocked,
   online,
 }: {
-  readonly loadPhone: () => Promise<string | null>;
-  readonly send: () => Promise<SmsOutcome>;
-  readonly verify: (code: string) => Promise<SmsOutcome>;
+  readonly loadStatus: () => Promise<SignerCodeState>;
+  readonly send: (method: SignerCodeMethod) => Promise<SmsOutcome>;
+  readonly verify: (method: SignerCodeMethod, code: string) => Promise<SmsOutcome>;
   readonly onVerified: () => void;
   readonly onLocked: () => void;
   readonly online: boolean;
 }) {
   const t = useTheme();
-  const [phone, setPhone] = useState<string | null>(null);
+  const [method, setMethod] = useState<SignerCodeMethod | null>(null);
+  const [destination, setDestination] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const show = (s: SignerCodeState) => {
+    setMethod(s.method);
+    setDestination(s.destination);
+  };
+  // Returns true when every required code is verified.
+  const load = async (): Promise<boolean> => {
+    try {
+      const s = await loadStatus();
+      if (s.verified) return true;
+      show(s);
+    } catch {
+      setMethod((m) => m ?? 'SMS_OTP');
+    }
+    return false;
+  };
   useEffect(() => {
     let live = true;
-    loadPhone().then(
-      (p) => {
-        if (live) setPhone(p);
+    loadStatus().then(
+      (s) => {
+        if (live) show(s);
       },
-      () => undefined,
+      () => {
+        if (live) setMethod((m) => m ?? 'SMS_OTP');
+      },
     );
     return () => {
       live = false;
@@ -1439,40 +1464,51 @@ function SmsCodeStep({
     // Read once when the step opens (the caller passes a new function each render).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const run = async (fn: () => Promise<SmsOutcome>) => {
+  if (method === null) {
+    return <View style={[styles.end, { backgroundColor: t.color.screen }]} testID="signing-smscode" />;
+  }
+  const copy = SIGNER_STEP_COPY[method];
+  const run = async (fn: () => Promise<SmsOutcome>, verifying: boolean) => {
     setBusy(true);
     setMessage(null);
     const r = await fn();
+    if (r.kind === 'verified' && verifying && method === 'SMS_OTP' && !(await load())) {
+      // The email code is next.
+      setSent(false);
+      setCode('');
+      setBusy(false);
+      return;
+    }
     setBusy(false);
     if (r.kind === 'verified') onVerified();
     else if (r.kind === 'locked') onLocked();
     else if (r.kind === 'sent') {
       setSent(true);
-      if (r.phone !== null) setPhone(r.phone);
+      if (r.phone !== null) setDestination(r.phone);
     } else setMessage(r.text);
   };
   return (
     <ScrollView
       contentContainerStyle={[styles.end, { backgroundColor: t.color.screen }]}
       keyboardShouldPersistTaps="handled"
-      testID="signing-smscode"
+      testID={method === 'EMAIL_OTP' ? 'signing-emailcode' : 'signing-smscode'}
     >
       <Text
         accessibilityRole="header"
         style={[styles.endTitle, { color: t.color.text, fontFamily: t.font.family }]}
       >
-        {SMS_CODE_COPY.title}
+        {copy.title}
       </Text>
       <Text style={[styles.endBody, { color: t.color.textSecondary, fontFamily: t.font.family }]}>
-        {SMS_CODE_COPY.body(phone)}
+        {sent ? copy.sentBody(destination) : copy.body(destination)}
       </Text>
       {sent ? (
         <TextField
-          label="Code"
+          label={copy.codeLabel}
           value={code}
           onChangeText={setCode}
           keyboardType="number-pad"
-          autoComplete="sms-otp"
+          autoComplete={method === 'EMAIL_OTP' ? 'one-time-code' : 'sms-otp'}
           textContentType="oneTimeCode"
         />
       ) : null}
@@ -1480,24 +1516,24 @@ function SmsCodeStep({
       {sent ? (
         <>
           <Button
-            title="Continue"
+            title={copy.continueLabel}
             busy={busy}
             disabled={code.trim().length === 0 || busy || !online}
-            onPress={() => void run(() => verify(code))}
+            onPress={() => void run(() => verify(method, code), true)}
           />
           <Button
-            title="Send a new code"
+            title={copy.resendLabel}
             variant="secondary"
             disabled={busy || !online}
-            onPress={() => void run(send)}
+            onPress={() => void run(() => send(method), false)}
           />
         </>
       ) : (
         <Button
-          title="Text me a code"
+          title={copy.sendLabel}
           busy={busy}
           disabled={busy || !online}
-          onPress={() => void run(send)}
+          onPress={() => void run(() => send(method), false)}
         />
       )}
     </ScrollView>

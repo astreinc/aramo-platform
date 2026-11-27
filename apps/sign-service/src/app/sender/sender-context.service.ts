@@ -17,6 +17,7 @@ import {
   SIGN_REPORTS_FEATURE,
   SIGN_SMS_DELIVERY_FEATURE,
   SIGN_SMS_OTP_FEATURE,
+  SIGN_EMAIL_OTP_FEATURE,
   SIGN_TEMPLATES_FEATURE,
   SIGN_WHATSAPP_DELIVERY_FEATURE,
   SIGN_WITNESS_SIGNING_FEATURE,
@@ -97,6 +98,7 @@ export interface SenderContextView {
     sms_delivery: boolean;
     whatsapp_delivery: boolean;
     sms_otp: boolean;
+    email_otp: boolean;
     id_verification: boolean;
     kba: boolean;
     custom_roles: boolean;
@@ -313,6 +315,8 @@ export class SenderContextService {
         whatsapp_delivery:
           (this.features ?? new SignFeatureGate()).isAvailable(SIGN_WHATSAPP_DELIVERY_FEATURE) && (this.whatsappPlan === undefined ? true : await this.whatsappPlan.entitled(tenant.id)),
         sms_otp: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_SMS_OTP_FEATURE),
+        // SIGN-FREE-PARITY-1 S3 (FP-R4) — every plan: launch availability only.
+        email_otp: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_EMAIL_OTP_FEATURE),
         // B2 — identity checks are refused for a Personal account (plan_not_eligible).
         id_verification: business && (this.features ?? new SignFeatureGate()).isAvailable(SIGN_ID_VERIFICATION_FEATURE),
         kba: business && (this.features ?? new SignFeatureGate()).isAvailable(SIGN_KBA_FEATURE),

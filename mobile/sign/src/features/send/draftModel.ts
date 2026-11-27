@@ -127,6 +127,8 @@ export interface DraftRecipient {
   readonly identityCheck?: IdentityCheck | null;
   /** True when identityCheck was changed here (only then is it sent). */
   readonly identityDirty?: boolean;
+  /** SIGN-FREE-PARITY-1 S3 — ask for a code sent to their email before signing (link signers). */
+  readonly emailOtp?: boolean;
   readonly messaging?: RecipientMessaging;
   /** True when messaging still has to be saved (its own route, after the recipients). */
   readonly messagingDirty?: boolean;
@@ -267,6 +269,8 @@ export interface ServerRecipient {
   readonly witnessForSignerId: string | null;
   readonly accessCodeSet: boolean;
   readonly identityCheck: IdentityCheck | null;
+  /** SIGN-FREE-PARITY-1 S3 — the server's `email_otp_required`. */
+  readonly emailOtp: boolean;
 }
 export interface ServerField {
   /** The stored field id (sent back with a preserved engine-type field, M-A6 §2). */
@@ -408,6 +412,7 @@ export function parseEnvelope(raw: unknown): ServerEnvelope {
           r['identity_verification_method'] === 'KBA'
             ? (r['identity_verification_method'] as IdentityCheck)
             : null,
+        emailOtp: r['email_otp_required'] === true,
       }))
       // Signing recipients in signing order, then copy recipients (M-A5 §1.6: a copy
       // recipient takes no part in the order and may come back without one).
@@ -568,6 +573,7 @@ export function payloadFromServer(
     ...(r.kind === 'WITNESS' ? { witnessForKey: r.witnessForSignerId ? keyOf(r.witnessForSignerId) : null } : {}),
     ...(r.accessCodeSet ? { accessCodeSet: true } : {}),
     ...(r.identityCheck ? { identityCheck: r.identityCheck } : {}),
+    ...(r.emailOtp ? { emailOtp: true } : {}),
   }));
   const { fields, preservedFields, fieldsPending } = editorFieldsFromServer(env.fields, pagesByDoc, keyOf, (_f, i) => `srv-${i}`);
   const generated = defaultSubject({ documents, recipients });

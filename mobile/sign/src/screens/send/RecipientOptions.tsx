@@ -8,6 +8,7 @@
 // The server decides every choice again; its refusal is shown by reason (ROLE_COPY).
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { EMAIL_CODE_OPTION } from '@aramo/sign-client';
 
 import { Button } from '../../components/Button';
 import { Segments, SettingRow } from '../../features/inbox/ui';
@@ -38,7 +39,7 @@ type ChannelKey = 'EMAIL' | TextChannel;
 export function hasOptions(r: DraftRecipient, f: SendFeatures): boolean {
   return (
     (f.witness && isWitness(r)) ||
-    (takesLinkChecks(r) && (f.accessCode || f.idCheck || f.kba)) ||
+    (takesLinkChecks(r) && (f.accessCode || f.idCheck || f.kba || f.emailCode || r.emailOtp === true)) ||
     (takesMessaging(r) && (f.sms || f.whatsapp || f.smsCode))
   );
 }
@@ -252,6 +253,16 @@ export function RecipientOptions({
     <View style={{ gap: 12 }} testID={`options-${r.key}`}>
       {f.witness && isWitness(r) ? <WitnessPicker r={r} list={list} controller={controller} /> : null}
       {f.accessCode && takesLinkChecks(r) ? <AccessCode r={r} controller={controller} /> : null}
+      {(f.emailCode || r.emailOtp === true) && takesLinkChecks(r) ? (
+        <SettingRow
+          title={EMAIL_CODE_OPTION.label}
+          subtitle={EMAIL_CODE_OPTION.hint}
+          value={r.emailOtp === true}
+          onValueChange={(v) => controller.setEmailCode(r.key, v)}
+          testID={`email-code-${r.key}`}
+          last
+        />
+      ) : null}
       {(f.idCheck || f.kba) && takesLinkChecks(r) ? (
         <View style={{ gap: 6 }}>
           <Label>Identity check</Label>

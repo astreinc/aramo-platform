@@ -115,6 +115,10 @@ class FakeRepo {
   async setOptOut(hash: string, channel: string, opted_out: boolean, source: string) {
     this.optOuts.set(`${hash}:${channel}`, { opted_out, source });
   }
+  // SIGN-FREE-PARITY-1 S3 — no email code on these recipients (sign-email-otp.spec covers it).
+  async emailOtpSetting() {
+    return null;
+  }
   async otpHistory(_t: string, signer_id: string, since: Date) {
     return this.challenges.filter((c) => c.signer_id === signer_id && c.created_at >= since).sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
   }

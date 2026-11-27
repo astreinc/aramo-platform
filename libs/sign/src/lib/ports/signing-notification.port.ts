@@ -17,7 +17,9 @@ export type SigningNotificationKind =
   // M-A5 §2.2 — a copy recipient's ON_SEND copy (a link to the source documents).
   | 'RECIPIENT_COPY'
   // Feature-Parity §1.9 — the sender's notice that a recipient failed identity verification.
-  | 'IDENTITY_VERIFICATION_FAILED';
+  | 'IDENTITY_VERIFICATION_FAILED'
+  // SIGN-FREE-PARITY-1 S3 — the one-time code a signer enters before signing (email code).
+  | 'SIGNER_EMAIL_CODE';
 
 // Who the notification is for: a signer (recipient) or the envelope's sender.
 export type SigningNotificationAudience = 'SIGNER' | 'SENDER';
@@ -57,6 +59,10 @@ export interface SigningNotification {
   sender_message?: string;
   // Feature-Parity §1.9 — IDENTITY_VERIFICATION_FAILED: why the recipient was stopped.
   verification_failure?: 'name_mismatch' | 'attempts_exhausted';
+  // SIGN-FREE-PARITY-1 S3 — SIGNER_EMAIL_CODE: the 6-digit code (body only; NEVER logged,
+  // never in the subject, which mailers log) and how long it is valid.
+  one_time_code?: string;
+  code_ttl_minutes?: number;
 }
 
 export interface SigningNotificationResult {
