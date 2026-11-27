@@ -130,8 +130,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP PLAN_CREATE g
     // PC-8: pending, visible in the catalog read, nothing created.
     const view = await catalog.readCatalog(T0);
     expect(view.plan_create.pending.map((x) => x.plan_key)).toContain(p.plan_key);
-    // PO R-8 2026-11-01: templates, reports and access code are AVAILABLE; PO 2026-11-17 (UAT SIG-07): delegate signing.
-    expect(view.plan_create.available_keys).toEqual([{ product_key: 'sign', keys: ['sign.access_code', 'sign.delegate_signing', 'sign.envelopes', 'sign.in_person_signing', 'sign.reports', 'sign.storage_bytes', 'sign.team_collaboration', 'sign.templates'] }]);
+    // PO R-8 2026-11-01: templates, reports and access code are AVAILABLE; PO 2026-11-17 (UAT SIG-07): delegate signing;
+    // SIGN-FREE-PARITY-1 S3 (LOCKED 2026-11-27): the signer email code.
+    expect(view.plan_create.available_keys).toEqual([{ product_key: 'sign', keys: ['sign.access_code', 'sign.delegate_signing', 'sign.email_otp', 'sign.envelopes', 'sign.in_person_signing', 'sign.reports', 'sign.storage_bytes', 'sign.team_collaboration', 'sign.templates'] }]);
     expect(await plans(p.plan_key)).toEqual([]);
     await h.changeRequests.approve(as(FA, 'finance_admin'), r.request.id, { step_index: 0 }, A6_CTX);
     expect(await plans(p.plan_key)).toEqual([]);

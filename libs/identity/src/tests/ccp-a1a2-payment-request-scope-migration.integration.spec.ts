@@ -113,10 +113,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A1 Amendment 
     // M-A7 privacy requests, then Feature-Parity §1.21 Sign custom roles, follow (neither is CCP),
     // then the three Apple Platform Go-Live identity migrations (at(-4)..at(-2)), then the India
     // Billing region-policy migration (at(-1)).
-    expect(IDENTITY_MIGRATIONS.at(-7)).toBe(MIGRATION);
-    expect(IDENTITY_MIGRATIONS.at(-6)).toBe('libs/identity/prisma/migrations/20261030030000_privacy_requests/migration.sql');
-    expect(IDENTITY_MIGRATIONS.at(-5)).toBe('libs/identity/prisma/migrations/20261101150000_sign_custom_roles/migration.sql');
-    expect(IDENTITY_MIGRATIONS.at(-8)).toBe('libs/identity/prisma/migrations/20261028060000_ccp_a1a1_finance_amount_scope/migration.sql');
+    expect(IDENTITY_MIGRATIONS.at(-8)).toBe(MIGRATION);
+    expect(IDENTITY_MIGRATIONS.at(-7)).toBe('libs/identity/prisma/migrations/20261030030000_privacy_requests/migration.sql');
+    expect(IDENTITY_MIGRATIONS.at(-6)).toBe('libs/identity/prisma/migrations/20261101150000_sign_custom_roles/migration.sql');
+    expect(IDENTITY_MIGRATIONS.at(-9)).toBe('libs/identity/prisma/migrations/20261028060000_ccp_a1a1_finance_amount_scope/migration.sql');
     const sql = migrationSql();
     expect(sql).not.toContain('$$');
     expect(sql.replace(/--[^\n]*$/gm, '').split(/;\s*\n/).map((x) => x.trim()).filter((x) => x.length > 0)).toHaveLength(1);

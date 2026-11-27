@@ -364,7 +364,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     expect((await eventsOf(res.body.reference)).map((e) => e.event_type)).not.toContain('IDENTITY_RETIREMENT_REFERRED');
 
     // Tenant isolation: the other Personal account is untouched.
-    expect(await convenienceCount(other)).toBe(10); // 6 + the M-A12 profile, settings, app issue, favorite
+    expect(await convenienceCount(other)).toBe(11); // 6 + the M-A12 profile, settings, app issue, favorite + the S7 folder
     expect(await liveSessions(other.user)).toBe(1);
     expect(await n(`SELECT count(*) AS n FROM "sign"."SignRecipientBinding" WHERE id=$1`, [otherBinding])).toBe(1);
     expect(await userRow(other.user)).toEqual({ is_active: true, email: other.email });
