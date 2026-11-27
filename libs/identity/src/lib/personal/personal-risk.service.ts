@@ -8,6 +8,14 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { PERSONAL_ALLOWED_COUNTRIES } from '../util/personal-eligibility.js';
 
 import type { GeoEvidence } from './geo-ip.port.js';
+import {
+  PERSONAL_OTP_MAX_ATTEMPTS,
+  PERSONAL_OTP_TTL_MS,
+  checkPersonalOtp,
+  generatePersonalOtp,
+  hashPersonalOtp,
+  mayResendPersonalOtp,
+} from './personal-otp.js';
 import { SMS_VERIFICATION_PORT, smsVerificationAdapterFromEnv, type SmsVerificationPort } from './sms-verification.port.js';
 
 // Aramo-Sign-Personal-Free-Launch-Directive-v1_1 (LOCKED) §6.3–§6.6 — the Personal
@@ -102,18 +110,38 @@ export function evaluatePersonalSend(
   // A review owed under an expired temporary restriction still holds sending.
   if (view.state === 'review' || (view.state === 'restricted' && view.review_pending)) return { ok: false, reason: 'personal_review_pending' };
   const location = sendLocation(input.ip_country, input.allowed_countries ?? PERSONAL_ALLOWED_COUNTRIES());
-  const stepUpOutstanding = view.step_up_required && view.phone_verified_at === null;
+  const stepUpOpen = stepUpOutstanding(view);
   if (location !== 'inside') {
     const young = input.now.getTime() - view.created_at.getTime() < SEND_LOCATION_YOUNG_ACCOUNT_DAYS * DAY_MS;
-    if (young || stepUpOutstanding) {
+    if (young || stepUpOpen) {
       return { ok: false, reason: 'personal_review_pending', location, flag_review: location === 'outside' ? 'send_location_outside' : 'send_location_unknown' };
     }
   }
-  if (stepUpOutstanding) return { ok: false, reason: 'phone_verification_required', location };
+  if (stepUpOpen) return { ok: false, reason: 'phone_verification_required', location };
   return { ok: true, location };
 }
 
 export type RiskTx = Pick<PrismaClient, 'tenantRiskState' | 'identityAuditEvent'>;
+
+// SIGN-FREE-PARITY-1 S2 — the sender's own step-up code (Personal phone code rules).
+export type PhoneStepUpCodeStart =
+  | { ok: true; code: string; phone_e164: string }
+  | { ok: false; reason: 'step_up_not_required' | 'personal_code_rate_limited' | 'phone_in_use' };
+
+export type PhoneStepUpCodeCheck =
+  | { outcome: 'ok'; view: TenantRiskStateView }
+  | { outcome: 'mismatch'; attempts_remaining: number }
+  | { outcome: 'expired' | 'exhausted' | 'none' | 'step_up_not_required' };
+
+/** A step-up is outstanding: asked for, and no phone assurance yet. */
+export function stepUpOutstanding(v: Pick<TenantRiskStateView, 'step_up_required' | 'phone_verified_at'>): boolean {
+  return v.step_up_required && v.phone_verified_at === null;
+}
+
+/** The code's binding: this tenant and this number (a code for one never answers another). */
+function stepUpCodeSubject(tenant_id: string, phone_e164: string): string {
+  return `step-up:${tenant_id}:${phone_e164}`;
+}
 
 export async function writePersonalAudit(
   tx: Pick<PrismaClient, 'identityAuditEvent'>,
@@ -146,7 +174,21 @@ function toView(r: {
   created_at: Date;
   updated_at: Date;
 }): TenantRiskStateView {
-  return { ...r, state: r.state as TenantRiskStateValue };
+  // Fields are picked, never spread: the step-up code columns (hash, attempts) never leave identity.
+  return {
+    tenant_id: r.tenant_id,
+    state: r.state as TenantRiskStateValue,
+    step_up_required: r.step_up_required,
+    review_pending: r.review_pending,
+    phone_e164: r.phone_e164,
+    phone_verified_at: r.phone_verified_at,
+    restricted_until: r.restricted_until,
+    reason: r.reason,
+    decided_by: r.decided_by,
+    step_up_cleared_by: r.step_up_cleared_by,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  };
 }
 
 function notPersonal(tenant_id: string): AramoError {
@@ -331,9 +373,20 @@ export class PersonalRiskService {
    * unavailable the step cannot be met by a phone code, so the account is also
    * routed to review (reason step_up_phone_unavailable) — an operator's review then
    * lifts it (clearReview), never recording phone assurance.
+   *
+   * SIGN-FREE-PARITY-1 S2 — `opts.sms_available` lets the caller that owns the real SMS
+   * delivery (sign-service, behind SIGN_SENDER_PHONE_STEP_UP) say a code can be sent; the
+   * account is then NOT routed to review and the sender clears the step with a code
+   * (startPhoneStepUpCode / verifyPhoneStepUpCode). Omitted = this service's own port.
    */
-  async requireStepUp(tenant_id: string, reason: string, now: Date = new Date(), evidence: Record<string, unknown> = {}): Promise<TenantRiskStateView> {
-    const smsAvailable = this.phoneVerificationAvailable();
+  async requireStepUp(
+    tenant_id: string,
+    reason: string,
+    now: Date = new Date(),
+    evidence: Record<string, unknown> = {},
+    opts: { sms_available?: boolean } = {},
+  ): Promise<TenantRiskStateView> {
+    const smsAvailable = opts.sms_available ?? this.phoneVerificationAvailable();
     const view = await this.prisma.$transaction(async (tx) => {
       const cur = await tx.tenantRiskState.findUnique({ where: { tenant_id } });
       if (cur === null) throw notPersonal(tenant_id);
@@ -393,6 +446,91 @@ export class PersonalRiskService {
         payload: { step_up_satisfied: cur.step_up_required },
       });
       return toView(row);
+    });
+  }
+
+  /**
+   * SIGN-FREE-PARITY-1 S2 — issue the sender's step-up phone code. Identity generates and
+   * stores it (SHA-256 only, bound to the tenant and the number); the caller delivers the
+   * returned code by SMS and never stores it. Refused when no step is outstanding, inside
+   * the 60 s resend gap or past 5 sends in 24 h, and when the number is already the verified
+   * phone of another Personal account (a number assures one account).
+   */
+  async startPhoneStepUpCode(tenant_id: string, phone_e164: string, now: Date = new Date()): Promise<PhoneStepUpCodeStart> {
+    return this.prisma.$transaction(async (tx) => {
+      const cur = await tx.tenantRiskState.findUnique({ where: { tenant_id } });
+      if (cur === null) throw notPersonal(tenant_id);
+      if (!stepUpOutstanding(cur)) return { ok: false, reason: 'step_up_not_required' };
+      const windowOpen = cur.step_up_code_window_start !== null && now.getTime() - cur.step_up_code_window_start.getTime() < DAY_MS;
+      const sends = windowOpen ? cur.step_up_code_sends : 0;
+      if (!mayResendPersonalOtp({ last_sent_at: cur.step_up_code_last_sent_at, sends_last_24h: sends, now })) {
+        return { ok: false, reason: 'personal_code_rate_limited' };
+      }
+      if (phone_e164 !== cur.phone_e164) {
+        const taken = await tx.tenantRiskState.count({ where: { phone_e164, phone_verified_at: { not: null }, tenant_id: { not: tenant_id } } });
+        if (taken > 0) return { ok: false, reason: 'phone_in_use' };
+      }
+      const code = generatePersonalOtp();
+      await tx.tenantRiskState.update({
+        where: { tenant_id },
+        data: {
+          step_up_code_hash: hashPersonalOtp(stepUpCodeSubject(tenant_id, phone_e164), 'phone', code),
+          step_up_code_phone_e164: phone_e164,
+          step_up_code_expires_at: new Date(now.getTime() + PERSONAL_OTP_TTL_MS),
+          step_up_code_attempts: 0,
+          step_up_code_last_sent_at: now,
+          step_up_code_window_start: windowOpen ? cur.step_up_code_window_start : now,
+          step_up_code_sends: sends + 1,
+        },
+      });
+      return { ok: true, code, phone_e164 };
+    });
+  }
+
+  /**
+   * SIGN-FREE-PARITY-1 S2 — check the sender's step-up code. A correct code records phone
+   * assurance for the number it was sent to (the one path besides markPhoneVerified that
+   * sets phone_verified_at, and it too only after a successful code check) and clears the
+   * code. A wrong code counts an attempt (5 at most).
+   */
+  async verifyPhoneStepUpCode(tenant_id: string, code: unknown, now: Date = new Date()): Promise<PhoneStepUpCodeCheck> {
+    return this.prisma.$transaction(async (tx) => {
+      const cur = await tx.tenantRiskState.findUnique({ where: { tenant_id } });
+      if (cur === null) throw notPersonal(tenant_id);
+      if (!stepUpOutstanding(cur)) return { outcome: 'step_up_not_required' };
+      const phone = cur.step_up_code_phone_e164;
+      if (phone === null) return { outcome: 'none' };
+      const outcome = checkPersonalOtp(
+        { hash: cur.step_up_code_hash, expires_at: cur.step_up_code_expires_at, attempts: cur.step_up_code_attempts },
+        stepUpCodeSubject(tenant_id, phone),
+        'phone',
+        code,
+        now,
+      );
+      if (outcome === 'mismatch') {
+        await tx.tenantRiskState.update({ where: { tenant_id }, data: { step_up_code_attempts: { increment: 1 } } });
+        return { outcome, attempts_remaining: Math.max(0, PERSONAL_OTP_MAX_ATTEMPTS - cur.step_up_code_attempts - 1) };
+      }
+      if (outcome !== 'ok') return { outcome };
+      const row = await tx.tenantRiskState.update({
+        where: { tenant_id },
+        data: {
+          phone_e164: phone,
+          phone_verified_at: now,
+          updated_at: now,
+          step_up_code_hash: null,
+          step_up_code_expires_at: null,
+          step_up_code_attempts: 0,
+        },
+      });
+      await writePersonalAudit(tx, {
+        event_type: 'identity.personal.risk.phone_verified',
+        tenant_id,
+        subject_id: tenant_id,
+        actor_id: null,
+        payload: { step_up_satisfied: true, via: 'sender_step_up_code', phone_changed: phone !== cur.phone_e164 },
+      });
+      return { outcome: 'ok', view: toView(row) };
     });
   }
 

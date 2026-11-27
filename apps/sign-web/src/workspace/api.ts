@@ -10,6 +10,7 @@ import {
   type AnyFieldType,
   type FieldTypeOn,
   type InboxActions,
+  type PhoneStepUpStatus,
   type SenderActions,
   type AutoRemindersView,
 } from '@aramo/sign-client';
@@ -878,6 +879,28 @@ export const accountApi = {
   close: (reason?: string) =>
     apiClient.post<{ state: 'closed'; closed_at: string }>('/v1/sign/account/close', reason !== undefined && reason.trim() !== '' ? { confirm: 'CLOSE', reason: reason.trim() } : { confirm: 'CLOSE' }),
 };
+
+// SIGN-FREE-PARITY-1 S2 — the sender's own phone step-up (/v1/sign/personal/step-up).
+// The server decides availability (dark unless SIGN_SENDER_PHONE_STEP_UP=1) and checks the code.
+export interface StepUpSent {
+  sent: true;
+  phone_masked: string;
+  expires_in_seconds: number;
+  resend_after_seconds: number;
+}
+
+export const stepUpApi = {
+  status: () => apiClient.get<PhoneStepUpStatus>('/v1/sign/personal/step-up/status'),
+  send: (phone?: string) => apiClient.post<StepUpSent>('/v1/sign/personal/step-up/send', phone !== undefined && phone.trim() !== '' ? { phone: phone.trim() } : {}),
+  verify: (code: string) => apiClient.post<{ verified: true }>('/v1/sign/personal/step-up/verify', { code }),
+};
+
+/** The refusal's details.reason (null for a non-API error). */
+export function refusalReason(e: unknown): string | null {
+  if (!(e instanceof ApiError)) return null;
+  const reason = e.details?.['reason'];
+  return typeof reason === 'string' ? reason : null;
+}
 
 // Aramo-Sign-Mobile-Amendment-M-A7 §3 — privacy requests (deletion, access, export,
 // correction). Signed in: the caller's own requests. Public (no session): the

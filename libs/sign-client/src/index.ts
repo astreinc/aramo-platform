@@ -304,6 +304,17 @@ export {
   type RefusalInput,
   type RefusalFormat,
 } from './lib/refusal-messages.js';
+// SIGN-FREE-PARITY-1 S2 — the sender's own phone step-up (copy + code rule, web and app).
+export {
+  PHONE_STEP_UP_REASON,
+  STEP_UP_CODE_LENGTH,
+  PHONE_STEP_UP_COPY,
+  PHONE_STEP_UP_REFUSAL_COPY,
+  offersPhoneStepUp,
+  normalizeStepUpCode,
+  isStepUpCode,
+  type PhoneStepUpStatus,
+} from './lib/phone-step-up.js';
 export {
   recipientKindOf,
   isWitness,

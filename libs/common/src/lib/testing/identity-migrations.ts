@@ -161,6 +161,10 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // India Billing Regions + Razorpay §4.9 — TenantBillingRegionPolicy_region_check admits 'IN'. Additive;
   // no returned shape changes, so no pact verify-api registration.
   'libs/identity/prisma/migrations/20261113110000_tenant_billing_region_policy_in/migration.sql',
+  // SIGN-FREE-PARITY-1 S2 — TenantRiskState step-up code columns (the sender's own SMS code).
+  // Additive; the risk-state views pick their fields, so no returned shape changes and no
+  // pact verify-api registration.
+  'libs/identity/prisma/migrations/20261127130000_sign_sender_phone_step_up_code/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each

@@ -815,6 +815,15 @@ model TenantRiskState {
   step_up_cleared_by String?
   created_at         DateTime  @default(now()) @db.Timestamptz(6)
   updated_at         DateTime  @default(now()) @db.Timestamptz(6)
+  // SIGN-FREE-PARITY-1 S2 — the sender's own step-up phone code (SHA-256 only;
+  // personal-otp.ts limits). window_start / sends = the 24-hour send count.
+  step_up_code_hash         String?
+  step_up_code_phone_e164   String?
+  step_up_code_expires_at   DateTime? @db.Timestamptz(6)
+  step_up_code_attempts     Int       @default(0)
+  step_up_code_last_sent_at DateTime? @db.Timestamptz(6)
+  step_up_code_window_start DateTime? @db.Timestamptz(6)
+  step_up_code_sends        Int       @default(0)
 
   @@index([state])
   @@schema("identity")

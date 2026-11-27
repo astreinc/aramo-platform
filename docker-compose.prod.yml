@@ -683,6 +683,11 @@ services:
       - SIGN_PERSONAL_SIGNUP_MODE
       - SIGN_PERSONAL_ALLOWED_COUNTRIES
       - SIGN_PERSONAL_SEND_WORDING
+      # SIGN-FREE-PARITY-1 S2 — self-serve phone step-up: a flagged young Personal sender
+      # verifies their phone with a texted code (the SMS providers below). DARK unless exactly
+      # `1`; unset keeps today's routing of the step-up to manual review. Switch on only after
+      # the US 10DLC / India DLT registrations and a separate PO authorization.
+      - SIGN_SENDER_PHONE_STEP_UP
       # Sign Catalog v2 §4.3 (P-4) — the Personal paid (Standard) checkout. Dark unless
       # exactly `1`: no upgrade offer, no purchasable Personal plan, checkout refused 403.
       - SIGN_PERSONAL_PAID_CHECKOUT_ENABLED

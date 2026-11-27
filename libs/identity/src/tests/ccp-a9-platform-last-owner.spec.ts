@@ -46,6 +46,8 @@ describe('CCP-A9 platform last-owner invariant (identity)', () => {
       'libs/identity/prisma/migrations/20261108200200_sign_personal_app_attest_key/migration.sql',
       // India Billing Regions + Razorpay §4.9 — the region policy CHECK admits 'IN'.
       'libs/identity/prisma/migrations/20261113110000_tenant_billing_region_policy_in/migration.sql',
+      // SIGN-FREE-PARITY-1 S2 — TenantRiskState step-up code columns.
+      'libs/identity/prisma/migrations/20261127130000_sign_sender_phone_step_up_code/migration.sql',
     ]);
     expect(IDENTITY_MIGRATIONS.slice(at, at + 4)).toEqual([
       'libs/identity/prisma/migrations/20261024120000_ccp_a1_commercial_role_catalog/migration.sql',

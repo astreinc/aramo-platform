@@ -3,7 +3,11 @@ import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-r
 import { Input } from '@aramo/fe-foundation';
 import {
   PDF_PICKER_TYPES,
+  PHONE_STEP_UP_REASON,
+  REFUSAL_COPY,
   SIGNERS_FULL_MESSAGE,
+  offersPhoneStepUp,
+  type PhoneStepUpStatus,
   checkPickedFile,
   danglingWitness,
   isWitnessable,
@@ -28,7 +32,9 @@ import {
   isCopyRecipient,
   MAX_COPY_RECIPIENTS,
   MAX_SIGNERS,
+  refusalReason,
   senderApi,
+  stepUpApi,
   type ContactRow,
   type CopyDelivery,
   type DeliveryChannel,
@@ -44,6 +50,7 @@ import { useWorkspace } from '../workspace';
 
 import { selfSignRefusal } from './EnvelopeDetail';
 import { PersonalUpgradeLink } from './PersonalAllowance';
+import { PhoneStepUpPanel } from './PhoneStepUp';
 import { PrepareEditor } from './PrepareEditor';
 import { readinessOf } from './readiness';
 
@@ -988,6 +995,9 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
   const [sending, setSending] = useState(false);
   // Aramo Sign Personal (Free) §4 — at a limit, offer the Business route (never a charge).
   const [upgrade, setUpgrade] = useState(false);
+  // SIGN-FREE-PARITY-1 S2 — a phone_verification_required refusal with self-serve on
+  // (the server's step-up status) offers the verify panel instead of the plain message.
+  const [stepUp, setStepUp] = useState<PhoneStepUpStatus | null>(null);
   const ready = readinessOf(env);
 
   // Persist the message when it differs from what the server holds; "" clears it.
@@ -1002,6 +1012,7 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
     setError('');
     setProblems([]);
     setUpgrade(false);
+    setStepUp(null);
     setSending(true);
     try {
       await saveMessage();
@@ -1011,6 +1022,12 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
       onSent();
       nav(`${base}/envelopes/${env.id}/sent`);
     } catch (e) {
+      const reason = refusalReason(e);
+      const offer = reason === PHONE_STEP_UP_REASON ? await stepUpApi.status().catch(() => null) : null;
+      if (offersPhoneStepUp(reason, offer)) {
+        setStepUp(offer);
+        return;
+      }
       setError(errorMessage(e));
       setUpgrade(ctx.workspace === 'personal' && isAllowanceLimit(e));
       const det = (e as { details?: { problems?: unknown } }).details;
@@ -1127,6 +1144,16 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
               Each signer gets an email with a secure link to sign at sign.aramo.ai. They don’t need an Aramo account.
             </p>
             {error !== '' ? <ErrorBox>{error}</ErrorBox> : null}
+            {stepUp !== null ? (
+              <PhoneStepUpPanel
+                status={stepUp}
+                onVerified={() => void send()}
+                onClose={() => {
+                  setStepUp(null);
+                  setError(REFUSAL_COPY[PHONE_STEP_UP_REASON] ?? '');
+                }}
+              />
+            ) : null}
             {upgrade ? <PersonalUpgradeLink /> : null}
             {problems.length > 0 ? (
               <ul className="sg-muted" style={{ fontSize: 12.5 }}>
