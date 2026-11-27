@@ -20,6 +20,8 @@ import {
   withUnitPrices,
 } from '../plan-version.js';
 import { isMeteredUnitKey } from '../usage/metered-units.js';
+import { FEATURE_AVAILABILITY } from '../feature-availability.js';
+import { ProductContextError, productOfMeteredKey } from '../product-registry.js';
 
 // CCP-B2 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.3 row B2; MP-A2 N-15, N-16) — the
 // pure catalog model behind the platform console's Catalog screen.
@@ -53,6 +55,12 @@ import { isMeteredUnitKey } from '../usage/metered-units.js';
 //                Setting it gives the draft explicit terms: MONTHLY = the list price (no commitment, so the
 //                plan commitment is cleared), ANNUAL_COMMIT = the given price. null removes the annual term
 //                (the draft keeps a MONTHLY-only term). A list-price edit moves the MONTHLY term with it.
+//   free parity  SIGN-FREE-PARITY-1 S1 / S5 (LOCKED 2026-11-27; typed divergences D-1, D-6) — a DRAFT may
+//                also: edit or REMOVE an existing short-window cap (DAY), REMOVE an allowance the version
+//                carries (never add one), edit the plan description, and set a feature's entitlement
+//                (on / off). A feature key must be registered in feature-availability.ts for the plan's
+//                product — an entitlement, kept apart from launch availability, so a key not yet
+//                launched may be entitled ahead of launch (it is never advertised until AVAILABLE).
 
 /** The Sign envelope allowance the editor's "Envelopes per month" reads and edits. */
 export const CATALOG_ENVELOPE_ALLOWANCE_KEY = 'sign.envelopes';
@@ -103,6 +111,14 @@ export interface CatalogVersionTerms {
   readonly billing_terms: readonly PlanVersionBillingTerm[];
   /** Billing terms — true when the version carries explicit terms (authored with the two-term model). */
   readonly explicit_terms: boolean;
+  /** SIGN-FREE-PARITY-1 S1 — the DAY cap on envelopes; null when the version has none. */
+  readonly envelopes_per_day: number | null;
+  /** SIGN-FREE-PARITY-1 S1 — every allowance key the version carries (sorted). */
+  readonly allowance_keys: readonly string[];
+  /** SIGN-FREE-PARITY-1 S1 — the plan description carried in the version content. */
+  readonly description: string | null;
+  /** SIGN-FREE-PARITY-1 S5 — the feature entitlements of the version (sorted by key). */
+  readonly features: readonly { readonly feature_key: string; readonly enabled: boolean }[];
 }
 
 /** M-A12 A1-3 — one regional-price edit: set (amount_minor) or remove (null) the (country, interval) entry. */
@@ -131,7 +147,19 @@ export interface CatalogDraftEdits {
   readonly price_unit?: PlanPriceUnit;
   /** Billing terms — the ANNUAL_COMMIT monthly price (minor units, 1..MAX_TERM_PRICE_MINOR), or null to remove it. */
   readonly annual_commit_price_minor?: number | null;
+  /** SIGN-FREE-PARITY-1 S1 — the DAY cap on envelopes: a positive integer edits the existing cap; null removes it. */
+  readonly envelopes_per_day?: number | null;
+  /** SIGN-FREE-PARITY-1 S1 — allowance keys to remove from the version (each must be carried; envelopes never). */
+  readonly remove_allowances?: readonly string[];
+  /** SIGN-FREE-PARITY-1 S1 — the plan description (1..300 characters), or null to clear it. */
+  readonly description?: string | null;
+  /** SIGN-FREE-PARITY-1 S5 — feature entitlements to set, keyed by registered feature key. */
+  readonly features?: Readonly<Record<string, boolean>>;
 }
+
+/** SIGN-FREE-PARITY-1 S1 — the short-window kind the editor's "Envelopes per day" reads and edits. */
+export const CATALOG_DAY_WINDOW_KIND = 'DAY';
+export const MAX_CATALOG_DESCRIPTION_LENGTH = 300;
 
 export function isContractPriced(content: PlanVersionContent): boolean {
   return content.plan.list_price_minor === null || content.plan.sales_model === 'CONTACT_SALES';
@@ -166,7 +194,24 @@ export function catalogTermsOf(content: PlanVersionContent): CatalogVersionTerms
     tenant_kind: content.plan.tenant_kind,
     billing_terms: versionTerms(content).map((t) => ({ term: t.term, list_price_minor: t.list_price_minor, commitment_months: t.commitment_months })),
     explicit_terms: hasExplicitTerms(content),
+    envelopes_per_day: dayWindow(content)?.limit_quantity ?? null,
+    allowance_keys: [...new Set(content.allowances.map((a) => a.allowance_key))].sort(),
+    description: content.plan.description,
+    features: [...content.features].sort((a, b) => a.feature_key.localeCompare(b.feature_key)).map((f) => ({ feature_key: f.feature_key, enabled: f.enabled })),
   };
+}
+
+function featureProduct(key: string): string | null {
+  try {
+    return productOfMeteredKey(key);
+  } catch (e) {
+    if (e instanceof ProductContextError) return null;
+    throw e;
+  }
+}
+
+function dayWindow(content: PlanVersionContent) {
+  return content.allowance_windows.find((w) => w.allowance_key === CATALOG_ENVELOPE_ALLOWANCE_KEY && w.window_kind === CATALOG_DAY_WINDOW_KIND);
 }
 
 const nonNegInt = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
@@ -204,9 +249,54 @@ export function applyCatalogDraftEdits(content: PlanVersionContent, edits: Catal
     if (storage(content) === undefined) throw new CatalogDraftEditError('term_missing', `this version carries no ${CATALOG_STORAGE_CAPACITY_KEY} capacity`, { term: CATALOG_STORAGE_CAPACITY_KEY });
     capacities = capacities.map((c) => (c.capacity_key === CATALOG_STORAGE_CAPACITY_KEY ? { ...c, limit_quantity: v, unlimited: v === null } : c));
   }
+  // SIGN-FREE-PARITY-1 S1 / S5 — window, allowance removal, description and feature entitlements.
+  let allowance_windows = content.allowance_windows;
+  let features = content.features;
+  if (edits.envelopes_per_day !== undefined) {
+    const v = edits.envelopes_per_day;
+    if (v !== null && (!nonNegInt(v) || v < 1)) throw new CatalogDraftEditError('term_missing', 'envelopes_per_day must be a positive integer or null');
+    if (dayWindow(content) === undefined) {
+      throw new CatalogDraftEditError('term_missing', `this version carries no ${CATALOG_DAY_WINDOW_KIND} cap on ${CATALOG_ENVELOPE_ALLOWANCE_KEY}`, { term: `${CATALOG_ENVELOPE_ALLOWANCE_KEY}:${CATALOG_DAY_WINDOW_KIND}` });
+    }
+    allowance_windows =
+      v === null
+        ? allowance_windows.filter((w) => !(w.allowance_key === CATALOG_ENVELOPE_ALLOWANCE_KEY && w.window_kind === CATALOG_DAY_WINDOW_KIND))
+        : allowance_windows.map((w) => (w.allowance_key === CATALOG_ENVELOPE_ALLOWANCE_KEY && w.window_kind === CATALOG_DAY_WINDOW_KIND ? { ...w, limit_quantity: v } : w));
+  }
+  if (edits.remove_allowances !== undefined) {
+    if (!Array.isArray(edits.remove_allowances) || !edits.remove_allowances.every((k) => typeof k === 'string')) {
+      throw new CatalogDraftEditError('term_missing', 'remove_allowances must be a list of allowance keys');
+    }
+    for (const key of edits.remove_allowances) {
+      if (key === CATALOG_ENVELOPE_ALLOWANCE_KEY) throw new CatalogDraftEditError('term_missing', `${CATALOG_ENVELOPE_ALLOWANCE_KEY} cannot be removed`, { term: key });
+      if (!allowances.some((a) => a.allowance_key === key)) throw new CatalogDraftEditError('term_missing', `this version carries no ${key} allowance`, { term: key });
+    }
+    const drop = new Set(edits.remove_allowances);
+    allowances = allowances.filter((a) => !drop.has(a.allowance_key));
+    allowance_windows = allowance_windows.filter((w) => !drop.has(w.allowance_key));
+  }
+  if (edits.description !== undefined) {
+    const d = edits.description === null ? null : typeof edits.description === 'string' ? edits.description.trim() : undefined;
+    if (d === undefined || (d !== null && (d.length < 1 || d.length > MAX_CATALOG_DESCRIPTION_LENGTH))) {
+      throw new CatalogDraftEditError('term_missing', `description must be 1..${MAX_CATALOG_DESCRIPTION_LENGTH} characters or null`);
+    }
+    plan = { ...plan, description: d };
+  }
+  if (edits.features !== undefined) {
+    const product = content.plan.product_key;
+    for (const [key, enabled] of Object.entries(edits.features)) {
+      if (typeof enabled !== 'boolean') throw new CatalogDraftEditError('term_missing', `features.${key} must be true or false`, { term: key });
+      if (!(key in FEATURE_AVAILABILITY) || featureProduct(key) !== product) {
+        throw new CatalogDraftEditError('term_missing', `${key} is not a registered ${product} feature (feature-availability.ts)`, { term: key });
+      }
+      features = features.some((f) => f.feature_key === key)
+        ? features.map((f) => (f.feature_key === key ? { ...f, enabled } : f))
+        : [...features, { feature_key: key, enabled }];
+    }
+  }
   let edited: PlanVersionContent;
   try {
-    edited = parsePlanVersionContent({ ...content, plan, allowances, capacities, ...(terms === undefined ? {} : { terms }) });
+    edited = parsePlanVersionContent({ ...content, plan, allowances, allowance_windows, capacities, features, ...(terms === undefined ? {} : { terms }) });
   } catch (e) {
     if (e instanceof PlanVersionContentError) throw new CatalogDraftEditError('term_missing', e.message);
     throw e;

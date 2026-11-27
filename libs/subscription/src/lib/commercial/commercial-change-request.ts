@@ -688,6 +688,8 @@ export const COMMERCIAL_ROLE_CHANGE_ROLE_KEYS = ['platform_owner', 'finance_admi
 export const POLICY_TARGET_CHECKSUM_KEY = 'target_content_checksum';
 /** Amendment A3 D1: the PLAN_VERSION_PUBLISH payload key holding the approved version's content checksum. */
 export const PLAN_TARGET_CHECKSUM_KEY = 'target_content_checksum';
+/** SIGN-FREE-PARITY-1 S1 — PLAN_VERSION_PUBLISH option: move the FREE plan's open subscriptions to the new version. */
+export const ADOPT_FREE_SUBSCRIPTIONS_KEY = 'adopt_free_subscriptions';
 
 /**
  * A3 validates only what chain resolution and the eligibility rules read; the applying
@@ -790,7 +792,11 @@ export function validatePayload(action_type: CommercialActionType, payload: unkn
       // CCP Billing Products Directive v1.0 (LOCKED) — `billing_products`: the plan's billing products on
       // web / App Store / Google Play, created or adopted and linked by the post-apply sync (BP-10). It
       // replaces the direct pins: a request carries one or the other, never both.
-      closedKeys(p, ['plan_version_id', 'provider_price_ref', PLAN_TARGET_CHECKSUM_KEY, 'store_products', BILLING_PRODUCTS_KEY], errors);
+      // SIGN-FREE-PARITY-1 S1 (typed divergence D-1) — `adopt_free_subscriptions: true` (FREE plans only,
+      // checked at apply): the same approved publish also moves the plan's open FREE subscriptions onto the
+      // new version, when no term is lowered and a dropped allowance has no usage. Absent = TD-A5-1 holds.
+      closedKeys(p, ['plan_version_id', 'provider_price_ref', PLAN_TARGET_CHECKSUM_KEY, 'store_products', BILLING_PRODUCTS_KEY, ADOPT_FREE_SUBSCRIPTIONS_KEY], errors);
+      if (p[ADOPT_FREE_SUBSCRIPTIONS_KEY] !== undefined && p[ADOPT_FREE_SUBSCRIPTIONS_KEY] !== true) errors.push(`${ADOPT_FREE_SUBSCRIPTIONS_KEY} must be true when present`);
       if (p['store_products'] !== undefined) errors.push(...storeProductPinErrors(p['store_products']));
       if (p[BILLING_PRODUCTS_KEY] !== undefined) {
         errors.push(...billingProductsShapeErrors(p[BILLING_PRODUCTS_KEY]));

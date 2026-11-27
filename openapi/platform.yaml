@@ -11481,7 +11481,7 @@ components:
     CommercialCatalogVersionTerms:
       type: object
       additionalProperties: false
-      required: [list_price_minor, currency, billing_interval, sales_model, contract_priced, envelopes_per_month, envelopes_unlimited, envelopes_present, storage_bytes, storage_unlimited, storage_present, unit_prices, regional_prices, price_unit, tenant_kind, billing_terms, explicit_terms]
+      required: [list_price_minor, currency, billing_interval, sales_model, contract_priced, envelopes_per_month, envelopes_unlimited, envelopes_present, storage_bytes, storage_unlimited, storage_present, unit_prices, regional_prices, price_unit, tenant_kind, billing_terms, explicit_terms, envelopes_per_day, allowance_keys, description, features]
       properties:
         billing_terms:
           type: array
@@ -11506,6 +11506,26 @@ components:
         explicit_terms:
           type: boolean
           description: True when the version carries explicit billing terms (authored with the two-term model).
+        envelopes_per_day:
+          type: [integer, 'null']
+          description: SIGN-FREE-PARITY-1 S1 — the DAY cap on sign.envelopes; null when the version has none.
+        allowance_keys:
+          type: array
+          items: { type: string }
+          description: SIGN-FREE-PARITY-1 S1 — every allowance key the version carries (sorted).
+        description:
+          type: [string, 'null']
+          description: SIGN-FREE-PARITY-1 S1 — the plan description carried in the version content.
+        features:
+          type: array
+          description: SIGN-FREE-PARITY-1 S5 — the feature entitlements of the version (sorted by key).
+          items:
+            type: object
+            additionalProperties: false
+            required: [feature_key, enabled]
+            properties:
+              feature_key: { type: string }
+              enabled: { type: boolean }
         price_unit:
           type: string
           enum: [ACCOUNT, SEAT]
@@ -11903,6 +11923,33 @@ components:
       additionalProperties: false
       required: [expected_content_checksum]
       properties:
+        envelopes_per_day:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 100000000
+          description: >-
+            SIGN-FREE-PARITY-1 S1 — edit the DRAFT's existing DAY cap on sign.envelopes, or remove it (null).
+            A cap is never added (409 term_missing when the version has none).
+        remove_allowances:
+          type: array
+          maxItems: 20
+          items: { type: string, maxLength: 64 }
+          description: >-
+            SIGN-FREE-PARITY-1 S1 — allowance keys the DRAFT carries, to remove (never sign.envelopes; 409
+            term_missing otherwise). A removed allowance's windows go with it.
+        description:
+          type: [string, 'null']
+          maxLength: 300
+          description: SIGN-FREE-PARITY-1 S1 — the plan description in the DRAFT's content (1..300 characters), or null.
+        features:
+          type: object
+          additionalProperties: { type: boolean }
+          minProperties: 1
+          maxProperties: 30
+          description: >-
+            SIGN-FREE-PARITY-1 S5 — feature entitlements on the DRAFT (feature key → on / off). The key must be
+            registered for the plan's product (feature-availability.ts); an entitlement is kept apart from launch
+            availability, so a key not yet launched may be entitled (it is never advertised until AVAILABLE).
         expected_content_checksum:
           type: string
           pattern: '^[0-9a-f]{64}$'

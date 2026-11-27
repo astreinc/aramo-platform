@@ -177,6 +177,11 @@ export class PlatformCommercialCatalogController {
     if (body.price_unit !== undefined) edits.price_unit = body.price_unit;
     // Billing terms (directive v1.0 §3.1) — the DRAFT's ANNUAL_COMMIT price (null removes the annual term).
     if (body.annual_commit_price_minor !== undefined) edits.annual_commit_price_minor = body.annual_commit_price_minor;
+    // SIGN-FREE-PARITY-1 S1 / S5 — DAY cap, allowance removal, description, feature entitlements.
+    if (body.envelopes_per_day !== undefined) edits.envelopes_per_day = body.envelopes_per_day;
+    if (body.remove_allowances !== undefined) edits.remove_allowances = [...body.remove_allowances];
+    if (body.description !== undefined) edits.description = body.description;
+    if (body.features !== undefined) edits.features = { ...body.features };
     const v = await run(requestId, () =>
       this.catalog.updateDraft(actorOf(auth), versionId, { expected_content_checksum: body.expected_content_checksum, edits, ...(body.note !== undefined ? { note: body.note } : {}) }, ctxOf(requestId)),
     );
@@ -265,5 +270,9 @@ function termsDto(t: CatalogVersionSummary['terms']): CatalogVersionTermsDto {
     regional_prices: (t.regional_prices ?? []).map((r) => ({ ...r })),
     billing_terms: (t.billing_terms ?? []).map((b) => ({ ...b })),
     explicit_terms: t.explicit_terms ?? false,
+    envelopes_per_day: t.envelopes_per_day ?? null,
+    allowance_keys: [...(t.allowance_keys ?? [])],
+    description: t.description ?? null,
+    features: (t.features ?? []).map((f) => ({ ...f })),
   };
 }

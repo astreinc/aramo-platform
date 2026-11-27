@@ -19,7 +19,8 @@ import {
   recordApplyFailure,
 } from './commercial-apply-records.js';
 import { CommercialAuditRepository } from './commercial-audit.repository.js';
-import { type B2CatalogApplyAction, PLAN_TARGET_CHECKSUM_KEY, type StoreProductPin, isCatalogApplicable, validatePayload } from './commercial-change-request.js';
+import { ADOPT_FREE_SUBSCRIPTIONS_KEY, type B2CatalogApplyAction, PLAN_TARGET_CHECKSUM_KEY, type StoreProductPin, isCatalogApplicable, validatePayload } from './commercial-change-request.js';
+import { type FreeAdoptionMove, adoptFreeSubscriptions } from './free-version-adoption.js';
 import { type PlanCreatePayload, planCreateContent, planRowOf } from './commercial-plan-create.js';
 import {
   COMMERCIAL_CLOCK,
@@ -205,6 +206,33 @@ export class CommercialCatalogApplyService {
           provider_price_ref: effect.provider_price_ref,
           effective_at: now.toISOString(),
         });
+        // SIGN-FREE-PARITY-1 S1 (D-1) — one event per moved FREE subscription (the SUBSCRIPTION_CHANGE shape).
+        for (const m of effect.adopted) {
+          await this.audit.append(
+            {
+              actor: { id: actor.user_id, type: 'user', role_keys },
+              event_type: 'COMMERCIAL_SUBSCRIPTION_CHANGED',
+              tenant_id: m.tenant_id,
+              subject: `tenant_subscription:${m.subscription_id}`,
+              change_request_id: id,
+              policy_version_id: req.policy_version_id,
+              payload: {
+                action_type: action,
+                subscription_id: m.subscription_id,
+                from_plan_id: effect.plan_id,
+                from_plan_version_id: m.from_plan_version_id,
+                plan_key: effect.plan_key,
+                to_plan_version_id: effect.plan_version_id,
+                to_content_checksum: effect.content_checksum,
+                period_anchor: m.period_anchor.toISOString(),
+                effective_at: now.toISOString(),
+                free_adoption: true,
+              },
+              correlation_id: ctx.correlation_id,
+            },
+            tx,
+          );
+        }
         // T10 — requester, reason, policy (the event column + checksum), approval evidence, the
         // version transition, the effective timestamp and the outcome.
         const approvals = await tx.commercialApproval.findMany({ where: { change_request_id: id }, orderBy: { step_index: 'asc' } });
@@ -220,6 +248,7 @@ export class CommercialCatalogApplyService {
           from_status: effect.from_status,
           to_status: effect.to_status,
           retired_plan_version_id: effect.retired_plan_version_id,
+          ...(effect.adopted.length > 0 ? { adopted_subscription_ids: effect.adopted.map((m) => m.subscription_id) } : {}),
           effective_at: now.toISOString(),
         });
         await this.fault?.('before_applied', { change_request_id: id });
@@ -277,11 +306,14 @@ export class CommercialCatalogApplyService {
         }
       }
       await this.versions.publish(version.id, now, tx);
-      return { ...base, retired_plan_version_id: prior?.id ?? null, provider_price_ref: price, from_status: 'DRAFT', to_status: 'PUBLISHED' };
+      // SIGN-FREE-PARITY-1 S1 (D-1) — opt-in: move the FREE plan's open subscriptions to this version.
+      const adopted: FreeAdoptionMove[] =
+        p[ADOPT_FREE_SUBSCRIPTIONS_KEY] === true ? await adoptFreeSubscriptions(tx, head.plan, { id: version.id, content: version.content, content_checksum: version.content_checksum }, now) : [];
+      return { ...base, retired_plan_version_id: prior?.id ?? null, provider_price_ref: price, from_status: 'DRAFT', to_status: 'PUBLISHED', adopted };
     }
     if (version.status !== 'PUBLISHED') throw new ApplyFailure('VERSION_NOT_PUBLISHED', { plan_version_id: version.id, status: version.status });
     await this.versions.retire(version.id, now, tx);
-    return { ...base, retired_plan_version_id: null, provider_price_ref: null, from_status: 'PUBLISHED', to_status: 'RETIRED' };
+    return { ...base, retired_plan_version_id: null, provider_price_ref: null, from_status: 'PUBLISHED', to_status: 'RETIRED', adopted: [] as FreeAdoptionMove[] };
   }
 
   /** CCP PLAN_CREATE (PC-7) — the plan, its rows and its PUBLISHED version 1, in the apply transaction. */
@@ -309,6 +341,7 @@ export class CommercialCatalogApplyService {
       provider_price_ref: null,
       from_status: 'NONE',
       to_status: 'PUBLISHED',
+      adopted: [] as FreeAdoptionMove[],
     };
   }
 }

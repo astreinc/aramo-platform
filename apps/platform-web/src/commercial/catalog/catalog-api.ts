@@ -47,6 +47,14 @@ export interface CatalogVersionTerms {
   billing_terms?: CatalogBillingTerm[];
   /** True when the version carries explicit billing terms. */
   explicit_terms?: boolean;
+  /** SIGN-FREE-PARITY-1 S1 — the DAY cap on envelopes (null = none). Absent from an older platform-admin. */
+  envelopes_per_day?: number | null;
+  /** SIGN-FREE-PARITY-1 S1 — every allowance key the version carries. */
+  allowance_keys?: string[];
+  /** SIGN-FREE-PARITY-1 S1 — the plan description in the version content. */
+  description?: string | null;
+  /** SIGN-FREE-PARITY-1 S5 — the feature entitlements of the version. */
+  features?: { feature_key: string; enabled: boolean }[];
 }
 
 /** One billing term of a version: its own monthly price (minor units) and commitment. */
@@ -173,6 +181,14 @@ export interface CatalogDraftEdits {
   price_unit?: CatalogPriceUnit;
   /** Billing terms — the ANNUAL_COMMIT monthly price (minor units, 12-month commitment), or null to remove it. */
   annual_commit_price_minor?: number | null;
+  /** SIGN-FREE-PARITY-1 S1 — edit (a positive integer) or remove (null) the existing DAY cap. */
+  envelopes_per_day?: number | null;
+  /** SIGN-FREE-PARITY-1 S1 — allowance keys to remove (never sign.envelopes). */
+  remove_allowances?: string[];
+  /** SIGN-FREE-PARITY-1 S1 — the plan description, or null to clear it. */
+  description?: string | null;
+  /** SIGN-FREE-PARITY-1 S5 — feature entitlements to set. */
+  features?: Record<string, boolean>;
 }
 
 export interface CatalogChangeRequest {
@@ -282,13 +298,19 @@ export const catalogApi = {
     idempotency_key: string;
     /** CCP Billing Products — a publish carries the plan's billing products (BP-10 / BP-11). */
     billing_products?: BillingProductsPayload;
+    /** SIGN-FREE-PARITY-1 S1 — a FREE plan's publish may also move its open subscriptions to the version. */
+    adopt_free_subscriptions?: boolean;
   }): Promise<CatalogChangeRequest> {
     // Merge train TD-MERGE-10: CCP-B2-backend gives these payloads a closed key set
     // ({plan_version_id[, provider_price_ref]}), so the evidence travels in the reason, the
     // convention CCP-B5 uses ("<reason>\n\nEvidence: <evidence>").
     const created = await apiClient.post<{ request: CatalogChangeRequest }>(CR, {
       action_type: input.action_type,
-      payload: { plan_version_id: input.plan_version_id, ...(input.billing_products !== undefined ? { billing_products: input.billing_products } : {}) },
+      payload: {
+        plan_version_id: input.plan_version_id,
+        ...(input.billing_products !== undefined ? { billing_products: input.billing_products } : {}),
+        ...(input.adopt_free_subscriptions === true ? { adopt_free_subscriptions: true } : {}),
+      },
       reason: `${input.reason.trim()}\n\nEvidence: ${input.evidence.trim()}`,
       idempotency_key: input.idempotency_key,
     });
