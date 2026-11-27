@@ -7,6 +7,7 @@
 //   Delete draft       — actions.delete_draft (D-W6-3; a sent envelope is voided)
 //   View certificate   — actions.certificate
 //   Delete / Restore   — actions.delete / actions.restore (APP-DELETED-1: the Deleted folder)
+//   Purge / Cancel     — actions.purge / actions.dequeue_purge (APP-DELETED-1 A2)
 //   Host in person     — each recipient's server `hostable`
 import {
   nextReminderAt as sharedNextReminderAt,
@@ -33,6 +34,9 @@ export interface ActionSet {
   /** APP-DELETED-1 — move a finished envelope to Deleted / bring it back. */
   readonly moveToDeleted: boolean;
   readonly restore: boolean;
+  /** APP-DELETED-1 A2 — queue a purge / cancel a queued one. */
+  readonly purge: boolean;
+  readonly cancelPurge: boolean;
 }
 
 /** The detail screen's actions: the server's decision, nothing derived on the device. */
@@ -46,6 +50,8 @@ export function actionsFor(detail: SenderEnvelopeDetail): ActionSet {
     void: a.void,
     moveToDeleted: a.delete,
     restore: a.restore,
+    purge: a.purge,
+    cancelPurge: a.dequeue_purge,
   };
 }
 

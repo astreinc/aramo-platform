@@ -30,6 +30,9 @@ describe('action visibility follows the server’s actions', () => {
     // APP-DELETED-1 (UAT DEL-09) — the Deleted folder.
     ['delete', 'moveToDeleted'],
     ['restore', 'restore'],
+    // APP-DELETED-1 A2 (UAT DEL-10) — purge.
+    ['purge', 'purge'],
+    ['dequeue_purge', 'cancelPurge'],
   ] as const)('actions.%s → %s', (key, field) => {
     for (const status of ENVELOPE_STATUSES) {
       expect(actionsFor(detail({ status, actions: { ...NO_SENDER_ACTIONS, [key]: true } }))[field]).toBe(true);
@@ -46,6 +49,8 @@ describe('action visibility follows the server’s actions', () => {
       void: false,
       moveToDeleted: false,
       restore: false,
+      purge: false,
+      cancelPurge: false,
     });
   });
 

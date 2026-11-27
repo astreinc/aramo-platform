@@ -1,7 +1,7 @@
 // APP-DELETED-1 (UAT DEL-09) — the sender's Deleted folder through the same routes as Sign web.
 import { ApiError } from '../../../api/errors';
 import type { WorkspaceClient } from '../../../api/workspaceClient';
-import { fetchDeletedSent, moveSentToDeleted, restoreSentEnvelope } from '../sentDeleted';
+import { cancelEnvelopePurge, fetchDeletedSent, moveSentToDeleted, purgeOf, queueEnvelopePurge, restoreSentEnvelope } from '../sentDeleted';
 
 function client(impl: () => Promise<unknown>) {
   const request = jest.fn(impl);
@@ -39,5 +39,25 @@ describe('sent envelopes in Deleted', () => {
     expect(r.message.length).toBeGreaterThan(0);
     const net = await restoreSentEnvelope(client(async () => Promise.reject(new Error('net'))).ws, 'e1');
     expect(net.kind).toBe('refused');
+  });
+
+  // APP-DELETED-1 A2 (UAT DEL-10) — both purge routes return { purge }, never the envelope.
+  it('queues and cancels a purge with the shared wording and returns the purge state', async () => {
+    const queued = { state: 'QUEUED', level: 'DOCUMENTS', due_at: '2026-12-11T00:00:00Z', executed_at: null };
+    const q = client(async () => ({ data: { purge: queued } }));
+    expect(await queueEnvelopePurge(q.ws, 'e1', 'DOCUMENTS_AND_METADATA')).toEqual({ kind: 'done', message: 'Purge scheduled', purge: queued });
+    expect(q.request).toHaveBeenCalledWith({ method: 'POST', path: '/v1/sign/sender/envelopes/e1/purge', body: { level: 'DOCUMENTS_AND_METADATA' } });
+    const c = client(async () => ({ data: { purge: { ...queued, state: 'DEQUEUED' } } }));
+    const out = await cancelEnvelopePurge(c.ws, 'e1');
+    expect(out).toMatchObject({ kind: 'done', message: 'Purge cancelled' });
+    expect(c.request).toHaveBeenCalledWith({ method: 'POST', path: '/v1/sign/sender/envelopes/e1/purge/dequeue', body: {} });
+    const refused = client(async () => Promise.reject(new ApiError({ status: 409, code: 'envelope_not_purgeable' } as never)));
+    expect((await queueEnvelopePurge(refused.ws, 'e1', 'DOCUMENTS')).kind).toBe('refused');
+  });
+
+  it('reads the purge state from an envelope, null when absent', () => {
+    expect(purgeOf({ purge: { state: 'EXECUTED', level: 'DOCUMENTS', due_at: null, executed_at: 'x' } })?.state).toBe('EXECUTED');
+    expect(purgeOf({})).toBeNull();
+    expect(purgeOf(null)).toBeNull();
   });
 });

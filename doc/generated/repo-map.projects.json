@@ -2832,7 +2832,10 @@
       "PROFILE_OFFER_COPY",
       "PROFILE_TEXT_FIELD_TYPES",
       "PROFILE_TEXT_MAX",
+      "PURGE_CONFIRM_WORD",
+      "PURGE_COPY",
       "PURGE_ELIGIBLE_STATUSES",
+      "PURGE_LEVELS",
       "RECIPIENT_COPY",
       "RECIPIENT_KINDS",
       "REFUSAL_COPY",
@@ -2894,7 +2897,9 @@
       "dropdownChoicesOf",
       "duplicateWitness",
       "envelopeDeleteRoute",
+      "envelopeDequeuePurgeRoute",
       "envelopeOpenForSigning",
+      "envelopePurgeRoute",
       "envelopeRestoreRoute",
       "evaluateSignerFieldRules",
       "fieldConditionIssues",
@@ -2980,6 +2985,9 @@
       "profileOffers",
       "profilePrefill",
       "profileTextValueRefusal",
+      "purgeBannerLine",
+      "purgeConfirmed",
+      "purgeLevelLabel",
       "radioChoiceClearable",
       "recipientKindOf",
       "refusalMessage",
@@ -15479,6 +15487,11 @@
       },
       {
         "from": "mobile/sign/src/features/folders/__tests__/folders.test.tsx",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/inbox/PurgeControls.tsx",
         "project": "sign-mobile",
         "status": "unscoped"
       },

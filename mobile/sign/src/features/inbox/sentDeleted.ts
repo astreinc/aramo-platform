@@ -5,7 +5,17 @@
 //   POST /v1/sign/sender/envelopes/:id/restore      → { restored: true }  (actions.restore)
 // The server decides both actions; the device shows them only when `actions` allows. Delete hides
 // the envelope for the user's organization only; recipients keep their copies.
-import { DELETED_FOLDER, ENVELOPE_DELETE_COPY, envelopeDeleteRoute, envelopeRestoreRoute } from '@aramo/sign-client';
+import {
+  DELETED_FOLDER,
+  ENVELOPE_DELETE_COPY,
+  PURGE_COPY,
+  envelopeDeleteRoute,
+  envelopeDequeuePurgeRoute,
+  envelopePurgeRoute,
+  envelopeRestoreRoute,
+  type PurgeLevel,
+  type PurgeStateView,
+} from '@aramo/sign-client';
 
 import { isApiError } from '../../api/errors';
 import { refusalMessage } from '../../api/refusalMessages';
@@ -32,7 +42,7 @@ export async function fetchDeletedSent(workspace: WorkspaceClient): Promise<Send
   }
 }
 
-function refused(e: unknown): SentDeleteOutcome {
+function refused(e: unknown): { readonly kind: 'refused'; readonly message: string } {
   return {
     kind: 'refused',
     message: isApiError(e) ? refusalMessage(e) : refusalMessage({ reason: 'unknown', code: 'unknown' }),
@@ -54,6 +64,36 @@ export async function restoreSentEnvelope(workspace: WorkspaceClient, envelopeId
   try {
     await workspace.request<{ restored: boolean }>({ method: 'POST', path: envelopeRestoreRoute(envelopeId), body: {} });
     return { kind: 'done', message: ENVELOPE_DELETE_COPY.restored };
+  } catch (e) {
+    return refused(e);
+  }
+}
+
+// APP-DELETED-1 A2 (UAT DEL-10) — the envelope purge, as on Sign web. Both routes return
+// SignEnvelopePurgeResult ({ purge }); the screen merges it and re-reads the envelope.
+// `purge` is on every sender envelope the server returns (purgeViewOf) but not yet in the
+// OpenAPI SenderEnvelopeDetail, so it is read through this narrow type (A2 typed divergence).
+export function purgeOf(detail: unknown): PurgeStateView | null {
+  return (detail as { purge?: PurgeStateView | null } | null)?.purge ?? null;
+}
+
+export type PurgeOutcome =
+  | { readonly kind: 'done'; readonly message: string; readonly purge: PurgeStateView | null }
+  | { readonly kind: 'refused'; readonly message: string };
+
+export async function queueEnvelopePurge(workspace: WorkspaceClient, envelopeId: string, level: PurgeLevel): Promise<PurgeOutcome> {
+  try {
+    const r = await workspace.request<{ purge: PurgeStateView | null }>({ method: 'POST', path: envelopePurgeRoute(envelopeId), body: { level } });
+    return { kind: 'done', message: PURGE_COPY.queued, purge: r.data.purge };
+  } catch (e) {
+    return refused(e);
+  }
+}
+
+export async function cancelEnvelopePurge(workspace: WorkspaceClient, envelopeId: string): Promise<PurgeOutcome> {
+  try {
+    const r = await workspace.request<{ purge: PurgeStateView | null }>({ method: 'POST', path: envelopeDequeuePurgeRoute(envelopeId), body: {} });
+    return { kind: 'done', message: PURGE_COPY.cancelled, purge: r.data.purge };
   } catch (e) {
     return refused(e);
   }
