@@ -3,6 +3,7 @@ import { jwtVerify as mockedJwtVerify } from 'jose';
 
 import {
   CognitoVerifierService,
+  lastNameOf,
   CognitoVerificationError,
 } from '../lib/cognito-verifier.service.js';
 
@@ -271,5 +272,31 @@ describe('CognitoVerifierService.verify — Sign in with Apple (R-1)', () => {
     const unnamed = await new CognitoVerifierService().verify('token');
     expect(unnamed.given_name).toBeNull();
     expect(unnamed.family_name).toBeNull();
+  });
+
+  it('undoes the family_name placeholder (the full name, mapped for Google / Microsoft)', async () => {
+    const verifyWith = async (given: string, family: string, name: string) => {
+      mocked.mockResolvedValue({ payload: { sub: SUB, email: 'a@b.test', email_verified: true, token_use: 'id', given_name: given, family_name: family, name } });
+      return (await new CognitoVerifierService().verify('token')).family_name;
+    };
+    // A one-word Google name: the placeholder is the first name → no last name.
+    expect(await verifyWith('Ashwin', 'Ashwin', 'Ashwin')).toBeNull();
+    // First + last: the last name is what follows the first name.
+    expect(await verifyWith('Ada', 'Ada Lovelace', 'Ada Lovelace')).toBe('Lovelace');
+    expect(await verifyWith('Mary Ann', 'Mary Ann Smith', 'Mary Ann Smith')).toBe('Smith');
+    // Family-name-first order.
+    expect(await verifyWith('Taro', 'Yamada Taro', 'Yamada Taro')).toBe('Yamada');
+    // A full name that does not contain the first name gives no guess.
+    expect(await verifyWith('Bob', 'Robert Jones', 'Robert Jones')).toBeNull();
+    // A real last name (differs from the full name) is kept as is.
+    expect(await verifyWith('Ada', 'Lovelace', 'Ada Lovelace')).toBe('Lovelace');
+  });
+});
+
+describe('lastNameOf', () => {
+  it('returns a real family name unchanged and null for a missing one', () => {
+    expect(lastNameOf('Ada', 'Lovelace', null)).toBe('Lovelace');
+    expect(lastNameOf('Ada', null, 'Ada Lovelace')).toBeNull();
+    expect(lastNameOf(null, 'Ada Lovelace', 'Ada Lovelace')).toBeNull();
   });
 });

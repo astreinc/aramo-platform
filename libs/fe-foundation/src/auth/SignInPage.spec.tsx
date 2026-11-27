@@ -119,6 +119,15 @@ describe('SignInPage', () => {
     expect(screen.getByRole('button', { name: 'Sign in with a different account' })).toBeTruthy();
   });
 
+  it('a provider that did not share a full name says why and how to fix it, not "canceled"', async () => {
+    renderPage('?error=VALIDATION_ERROR&reason=idp_profile_incomplete');
+    expect(screen.getByText('Your account didn’t share your full name')).toBeTruthy();
+    expect(screen.getByText(/Add your first and last name/)).toBeTruthy();
+    expect(screen.queryByText('Sign-in was canceled')).toBeNull();
+    await screen.findByTestId('signin-google');
+    expect(screen.getByRole('button', { name: 'Sign in with a different account' })).toBeTruthy();
+  });
+
   it('the unverified-email screen wins over an app’s generic VALIDATION_ERROR copy', () => {
     render(
       <MemoryRouter initialEntries={['/login?error=VALIDATION_ERROR&reason=idp_email_unverified']}>
