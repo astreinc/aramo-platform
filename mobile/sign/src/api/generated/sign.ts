@@ -2614,7 +2614,7 @@ export interface paths {
         put?: never;
         /**
          * Prove ownership of the email with the one-time token; the request is created.
-         * @description Aramo-Sign-Mobile-Amendment-M-A7 §3.1. The token (from the link's URL fragment) travels only in this body. The request is RECEIVED, IDENTITY_VALIDATED (email ownership) and inventoried, and waits for the Aramo privacy team. Reusing the token within its hour answers the same request. An unknown, expired or used token answers 404 (details.reason = privacy_link_invalid).
+         * @description Aramo-Sign-Mobile-Amendment-M-A7 §3.1. The token (from the link's URL fragment) travels only in this body. The request is RECEIVED, IDENTITY_VALIDATED (email ownership) and inventoried, and waits for the Aramo privacy team. PRIV-ADMIN-1 OD-11: a DELETION whose subject is a Business member is referred to the subject's organization (REFERRED_TO_ORGANIZATION), as an in-app one is; it is never executed without an operator. Reusing the token within its hour answers the same request. An unknown, expired or used token answers 404 (details.reason = privacy_link_invalid).
          */
         post: operations["verifyPrivacyRequest"];
         delete?: never;
