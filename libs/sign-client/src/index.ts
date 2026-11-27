@@ -248,6 +248,8 @@ export {
   fieldImportSummary,
   PDF_PROBLEM_COPY,
   PDF_REFUSED_FALLBACK,
+  PDF_SCRIPTS_WITH_IMPORT_COPY,
+  attachmentsRemovedNotice,
   pdfProblemText,
   type SuggestedFieldType,
   type PendingSuggestionLike,

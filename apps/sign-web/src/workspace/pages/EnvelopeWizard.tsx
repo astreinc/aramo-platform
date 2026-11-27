@@ -4,6 +4,7 @@ import { Input } from '@aramo/fe-foundation';
 import {
   PDF_PICKER_TYPES,
   SIGNERS_FULL_MESSAGE,
+  attachmentsRemovedNotice,
   checkPickedFile,
   danglingWitness,
   isWitnessable,
@@ -174,12 +175,16 @@ function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange:
   const [error, setError] = useState('');
   const [over, setOver] = useState(false);
   const [titles, setTitles] = useState<Record<string, string>>({});
+  // PDF-ATTACH-1 ATT-8 — one shared notice per upload whose attached files were removed.
+  const [notices, setNotices] = useState<string[]>([]);
   // PO ruling 2026-11-25 — the FIELD-PARITY-1 P2-5 / P2-6 upload options ("Import fields from a
   // fillable PDF", "Apply text tags") are for authoring Document templates (the console form
   // Studio), not for sending: the Send wizard uploads without them, as the app does.
 
   const upload = async (files: FileList | File[]) => {
     setError('');
+    setNotices([]);
+    const removed: string[] = [];
     for (const f of Array.from(files)) {
       const check = checkPickedFile({ name: f.name, mimeType: f.type, size: f.size, head: await headOf(f), wordAllowed: false });
       if (!check.ok) {
@@ -189,12 +194,15 @@ function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange:
       setBusy(`Uploading ${f.name}…`);
       try {
         const content_base64 = await fileToBase64(f);
-        await senderApi.upload(env.id, { filename: f.name, title: titleFromFilename(f.name), content_base64 });
+        const up = await senderApi.upload(env.id, { filename: f.name, title: titleFromFilename(f.name), content_base64 });
+        const notice = attachmentsRemovedNotice(up.attachments_removed);
+        if (notice !== null) removed.push(`${f.name}: ${notice}`);
       } catch (e) {
         setError(errorMessage(e));
       }
     }
     setBusy('');
+    setNotices(removed);
     let d = await senderApi.detail(env.id);
     // Prototype: an untitled envelope takes its first document's title.
     const first = d.documents[0];
@@ -262,6 +270,13 @@ function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange:
             <p className="sg-muted" role="status">
               {busy}
             </p>
+          ) : null}
+          {notices.length > 0 ? (
+            <div className="sg-note" role="status" data-testid="attachments-removed" style={{ marginTop: 10 }}>
+              {notices.map((n) => (
+                <div key={n}>{n}</div>
+              ))}
+            </div>
           ) : null}
           {error !== '' ? (
             <div style={{ marginTop: 10 }}>

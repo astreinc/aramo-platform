@@ -160,6 +160,8 @@ export interface FixedFormVersionView {
   readonly sender_filled_fields_enabled: boolean;
   /** FIELD-PARITY-1 P2-5 / P2-6 — present only on an upload sent with import_fields / apply_text_tags. */
   readonly field_import?: FixedFormFieldImport;
+  /** PDF-ATTACH-1 ATT-6 — on the upload response only, when attached files were removed from the PDF. */
+  readonly attachments_removed?: number;
 }
 
 /** FIELD-PARITY-1 P2-5 / P2-6 — what an opted-in upload added, warned about and removed. */
