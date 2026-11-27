@@ -79,6 +79,13 @@ export interface PrivacyRequestEventRecord {
   created_at: Date;
 }
 
+/** PRIV-ADMIN-1 OD-4 — failed execution attempts since the request last entered EXECUTING. */
+export interface PrivacyExecutionAttempts {
+  attempts: number;
+  last_failure_at: Date | null;
+  last_error: string | null;
+}
+
 /** What the requester sees: the identifier, a meaningful status and the outcome. */
 export interface PrivacyRequestView {
   reference: string;
@@ -259,13 +266,48 @@ export class PrivacyRequestService {
     });
   }
 
-  /** A non-transition event (assignment, referral note, legal hold, failure, operator note). */
-  async recordEvent(id: string, event_type: string, actor: PrivacyActor, payload: Record<string, unknown> = {}, now: Date = new Date()): Promise<void> {
+  /**
+   * A non-transition event (assignment, referral note, legal hold, failure, operator note).
+   * `touch` also stamps updated_at (PRIV-ADMIN-1 OD-4: a failed execution moves the
+   * request to the back of the worker queue, which is ordered by updated_at).
+   */
+  async recordEvent(id: string, event_type: string, actor: PrivacyActor, payload: Record<string, unknown> = {}, now: Date = new Date(), opts: { touch?: boolean } = {}): Promise<void> {
     const status = await this.prisma.privacyRequest.findUnique({ where: { id }, select: { status: true } });
     if (status === null) throw new AramoError('NOT_FOUND', 'Privacy request not found', 404, { requestId: 'privacy-request', details: { reason: 'privacy_request_not_found' } });
     await this.prisma.$transaction(async (tx) => {
       await this.event(tx, id, event_type, status.status, status.status, actor, payload, now);
+      if (opts.touch === true) await tx.privacyRequest.updateMany({ where: { id, status: status.status }, data: { updated_at: now } });
     });
+  }
+
+  /**
+   * PRIV-ADMIN-1 OD-4 — execution attempts per request: the EXECUTION_FAILED events
+   * since the request last entered EXECUTING (a failure stamped in the same instant as
+   * the entry counts as after it), with the last failure's time and error name.
+   */
+  async executionAttempts(ids: readonly string[]): Promise<Map<string, PrivacyExecutionAttempts>> {
+    const out = new Map<string, PrivacyExecutionAttempts>();
+    if (ids.length === 0) return out;
+    const rows = await this.prisma.privacyRequestEvent.findMany({
+      where: {
+        request_id: { in: [...ids] },
+        OR: [{ event_type: 'EXECUTION_FAILED' }, { event_type: 'STATUS_CHANGED', to_status: 'EXECUTING' }],
+      },
+      select: { request_id: true, event_type: true, payload: true, created_at: true },
+      orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+    });
+    const entered = new Map<string, number>();
+    for (const r of rows) {
+      if (r.event_type === 'STATUS_CHANGED') entered.set(r.request_id, Math.max(entered.get(r.request_id) ?? 0, r.created_at.getTime()));
+    }
+    for (const id of ids) out.set(id, { attempts: 0, last_failure_at: null, last_error: null });
+    for (const r of rows) {
+      if (r.event_type !== 'EXECUTION_FAILED' || r.created_at.getTime() < (entered.get(r.request_id) ?? 0)) continue;
+      const cur = out.get(r.request_id) ?? { attempts: 0, last_failure_at: null, last_error: null };
+      const error = (r.payload as Record<string, unknown> | null)?.['error'];
+      out.set(r.request_id, { attempts: cur.attempts + 1, last_failure_at: r.created_at, last_error: typeof error === 'string' ? error : null });
+    }
+    return out;
   }
 
   /** Assigns the responsible Aramo operator (any non-terminal status). */
@@ -305,12 +347,34 @@ export class PrivacyRequestService {
     return row === null ? null : toRecord(row);
   }
 
-  /** The operator queue: open requests by due date (or a status filter). */
-  async listQueue(filter: { status?: PrivacyRequestStatus; request_type?: PrivacyRequestType; include_closed?: boolean; limit?: number } = {}): Promise<PrivacyRequestRecord[]> {
+  /**
+   * The operator queue: open requests by due date (or a status filter). PRIV-ADMIN-1
+   * adds channel, subject kind, assigned operator, overdue (open and past due at `now`)
+   * and an exact (already normalized) reference.
+   */
+  async listQueue(
+    filter: {
+      status?: PrivacyRequestStatus;
+      request_type?: PrivacyRequestType;
+      include_closed?: boolean;
+      limit?: number;
+      channel?: PrivacyChannel;
+      subject_kind?: PrivacySubjectKind;
+      assigned_operator_id?: string;
+      overdue?: boolean;
+      reference?: string;
+      now?: Date;
+    } = {},
+  ): Promise<PrivacyRequestRecord[]> {
     const rows = await this.prisma.privacyRequest.findMany({
       where: {
         ...(filter.status !== undefined ? { status: filter.status } : filter.include_closed === true ? {} : { status: { notIn: [...PRIVACY_TERMINAL_STATUSES] } }),
         ...(filter.request_type !== undefined ? { request_type: filter.request_type } : {}),
+        ...(filter.channel !== undefined ? { channel: filter.channel } : {}),
+        ...(filter.subject_kind !== undefined ? { subject_kind: filter.subject_kind } : {}),
+        ...(filter.assigned_operator_id !== undefined ? { assigned_operator_id: filter.assigned_operator_id } : {}),
+        ...(filter.overdue === true ? { completed_at: null, due_at: { lt: filter.now ?? new Date() } } : {}),
+        ...(filter.reference !== undefined ? { reference: filter.reference } : {}),
       },
       orderBy: [{ due_at: 'asc' }, { id: 'asc' }],
       take: Math.min(Math.max(filter.limit ?? 100, 1), 500),
@@ -320,7 +384,7 @@ export class PrivacyRequestService {
 
   /** Requests of a product waiting in EXECUTING (the product's execution worker). */
   async listExecuting(product: PrivacyProduct, limit = 20): Promise<PrivacyRequestRecord[]> {
-    const rows = await this.prisma.privacyRequest.findMany({ where: { product, status: 'EXECUTING' }, orderBy: { updated_at: 'asc' }, take: limit });
+    const rows = await this.prisma.privacyRequest.findMany({ where: { product, status: 'EXECUTING' }, orderBy: [{ updated_at: 'asc' }, { id: 'asc' }], take: limit });
     return rows.map(toRecord);
   }
 

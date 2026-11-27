@@ -43,10 +43,13 @@ export type PrivacyActorType = 'SUBJECT' | 'OPERATOR' | 'SYSTEM';
 //   EXECUTING → DATA_INVENTORY            an execution that meets a legal hold (or fails)
 //                                         goes back to the operator queue; nothing is
 //                                         deleted while a hold stands.
+// PRIV-ADMIN-1 OD-2 adds DATA_INVENTORY → COMPLETED: an operator-handled outcome for
+// ACCESS / EXPORT / CORRECTION. The table is type-blind; the operator route refuses it
+// for a DELETION (OD-1: a deletion completes only from EXECUTING, by the system).
 export const PRIVACY_TRANSITIONS: Readonly<Record<PrivacyRequestStatus, readonly PrivacyRequestStatus[]>> = {
   RECEIVED: ['IDENTITY_VALIDATED', 'DENIED_WITH_REASON', 'CANCELLED'],
   IDENTITY_VALIDATED: ['DATA_INVENTORY', 'DENIED_WITH_REASON', 'CANCELLED'],
-  DATA_INVENTORY: ['REFERRED_TO_ORGANIZATION', 'EXECUTING', 'DENIED_WITH_REASON', 'CANCELLED'],
+  DATA_INVENTORY: ['REFERRED_TO_ORGANIZATION', 'EXECUTING', 'COMPLETED', 'DENIED_WITH_REASON', 'CANCELLED'],
   REFERRED_TO_ORGANIZATION: ['EXECUTING', 'COMPLETED', 'DENIED_WITH_REASON', 'CANCELLED'],
   EXECUTING: ['COMPLETED', 'DATA_INVENTORY'],
   COMPLETED: [],
@@ -117,3 +120,20 @@ export const SIGN_PRIVACY_DELETION_EXECUTION_FLAG = 'SIGN_PRIVACY_DELETION_EXECU
 export function privacyDeletionExecutionEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return env[SIGN_PRIVACY_DELETION_EXECUTION_FLAG] === '1';
 }
+
+// PRIV-ADMIN-1 OD-4 — bounded execution retry. Attempts = EXECUTION_FAILED events since
+// the request last entered EXECUTING. After failure n (1..4) the next attempt waits the
+// n-th back-off; the 5th failure returns the request to DATA_INVENTORY
+// (EXECUTION_GAVE_UP).
+export const PRIVACY_EXECUTION_BACKOFF_MINUTES: readonly number[] = [1, 5, 15, 60];
+export const PRIVACY_EXECUTION_MAX_ATTEMPTS = 5;
+
+/** When the next execution attempt may run (null: now — no failure yet). */
+export function privacyExecutionNextAttemptAt(attempts: number, last_failure_at: Date | null): Date | null {
+  if (attempts <= 0 || last_failure_at === null) return null;
+  const minutes = PRIVACY_EXECUTION_BACKOFF_MINUTES[Math.min(attempts, PRIVACY_EXECUTION_BACKOFF_MINUTES.length) - 1] ?? 60;
+  return new Date(last_failure_at.getTime() + minutes * 60_000);
+}
+
+/** The operator note limit (NOTE, RETURNED_TO_QUEUE). */
+export const PRIVACY_NOTE_MAX = 2000;

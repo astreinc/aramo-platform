@@ -3,6 +3,8 @@ import { randomBytes } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
+  PRIVACY_EXECUTION_BACKOFF_MINUTES,
+  PRIVACY_EXECUTION_MAX_ATTEMPTS,
   PRIVACY_REFERENCE_PATTERN,
   PRIVACY_REQUEST_STATUSES,
   PRIVACY_TERMINAL_STATUSES,
@@ -11,6 +13,7 @@ import {
   newPrivacyReference,
   normalizePrivacyReference,
   privacyDeletionExecutionEnabled,
+  privacyExecutionNextAttemptAt,
   privacyRequestDueAt,
 } from '../lib/privacy/privacy-request.model.js';
 import {
@@ -39,10 +42,27 @@ describe('privacy request model (M-A7 §3.1)', () => {
     expect(isPrivacyTransitionLegal('RECEIVED', 'EXECUTING')).toBe(false);
     expect(isPrivacyTransitionLegal('RECEIVED', 'DATA_INVENTORY')).toBe(false);
     expect(isPrivacyTransitionLegal('IDENTITY_VALIDATED', 'EXECUTING')).toBe(false);
-    expect(isPrivacyTransitionLegal('DATA_INVENTORY', 'COMPLETED')).toBe(false);
+    // PRIV-ADMIN-1 OD-2 — the operator-handled outcome (ACCESS / EXPORT / CORRECTION;
+    // the operator route refuses it for a DELETION, OD-1).
+    expect(isPrivacyTransitionLegal('DATA_INVENTORY', 'COMPLETED')).toBe(true);
+    // An executing request goes only to COMPLETED or back to the queue.
+    expect(PRIVACY_TRANSITIONS.EXECUTING).toEqual(['COMPLETED', 'DATA_INVENTORY']);
     // Terminal statuses are final.
     for (const t of PRIVACY_TERMINAL_STATUSES) expect(PRIVACY_TRANSITIONS[t]).toEqual([]);
     expect(Object.keys(PRIVACY_TRANSITIONS).sort()).toEqual([...PRIVACY_REQUEST_STATUSES].sort());
+  });
+
+  it('bounded execution retry: 1, 5, 15, 60 minutes after failure 1..4; capped at 5 (PRIV-ADMIN-1 OD-4)', () => {
+    expect(PRIVACY_EXECUTION_BACKOFF_MINUTES).toEqual([1, 5, 15, 60]);
+    expect(PRIVACY_EXECUTION_MAX_ATTEMPTS).toBe(5);
+    const at = new Date('2026-11-27T10:00:00.000Z');
+    expect(privacyExecutionNextAttemptAt(0, null)).toBeNull();
+    expect(privacyExecutionNextAttemptAt(0, at)).toBeNull();
+    expect(privacyExecutionNextAttemptAt(1, at)?.toISOString()).toBe('2026-11-27T10:01:00.000Z');
+    expect(privacyExecutionNextAttemptAt(2, at)?.toISOString()).toBe('2026-11-27T10:05:00.000Z');
+    expect(privacyExecutionNextAttemptAt(3, at)?.toISOString()).toBe('2026-11-27T10:15:00.000Z');
+    expect(privacyExecutionNextAttemptAt(4, at)?.toISOString()).toBe('2026-11-27T11:00:00.000Z');
+    expect(privacyExecutionNextAttemptAt(9, at)?.toISOString()).toBe('2026-11-27T11:00:00.000Z');
   });
 
   it('is due 30 days after receipt', () => {
