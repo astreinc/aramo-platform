@@ -101,6 +101,8 @@
     "apps/sign-service/src/app/billing/esign-billing.controller.ts": "AP",
     "apps/sign-service/src/app/sender/esign-sender.controller.ts": "AP",
     "apps/sign-service/src/app/cloud-storage/cloud-storage.controller.ts": "AP",
+    "apps/sign-service/src/app/folders/sign-folders.controller.ts": "AP",
+    "apps/sign-service/src/app/personal/sender-phone-step-up.controller.ts": "AP",
     "apps/sign-service/src/app/retention/sign-retention.controller.ts": "AP",
     "apps/sign-service/src/app/branding/sign-branding.controller.ts": "AP",
     "apps/sign-service/src/app/branding/sign-branding-public.controller.ts": "PZ",

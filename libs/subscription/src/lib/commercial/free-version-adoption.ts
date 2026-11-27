@@ -3,6 +3,7 @@ import { FREE_SUBSCRIPTION_SOURCE } from '../free-personal-subscription.js';
 import { PIN_REASON_CHANGE_REQUEST, type PlanVersionContent, planVersionTerms } from '../plan-version.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import { BASE_COMPOSITION } from '../product-registry.js';
+
 import { ApplyFailure } from './commercial-apply-records.js';
 import { type TermChange, changedTerms, undefinedTermTreatment } from './commercial-apply.service.js';
 
