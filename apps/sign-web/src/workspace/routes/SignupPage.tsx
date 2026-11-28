@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Button } from '@aramo/fe-foundation';
 
+import { markSmsSignupOffer } from '../sms-signup-offer';
 
 import { AddressAutocomplete, type AddressSuggestion } from './AddressAutocomplete';
 import {
@@ -784,7 +785,11 @@ export function SignupVerifyPage() {
       organization: toOrganizationPayload(values),
     })
       .then((r) => {
-        if (r.status === 'PROVISIONED') setDone(r);
+        if (r.status === 'PROVISIONED') {
+          // SMS-CONSENT-1 §2 — offer the optional text-messages step after the first sign-in.
+          markSmsSignupOffer();
+          setDone(r);
+        }
         else setError('Your organization is still being created. Try again in a moment.');
       })
       .catch(onFailure)

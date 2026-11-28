@@ -116,6 +116,9 @@ export interface SenderContext {
   // SIGN-FREE-PARITY-1 S6 — the cloud storage providers offered (server-decided; read through
   // @aramo/sign-client cloudProvidersOf). Absent on an older backend = none.
   cloud_storage?: string[];
+  // SMS-CONSENT-1 §1 — text options are launched and in the plan (`required`) and the
+  // organization has certified (`certified`). Absent on an older backend = not required.
+  sms_certification?: { required: boolean; certified: boolean };
 }
 
 export interface Summary {
@@ -899,6 +902,58 @@ export const stepUpApi = {
   send: (phone?: string) => apiClient.post<StepUpSent>('/v1/sign/personal/step-up/send', phone !== undefined && phone.trim() !== '' ? { phone: phone.trim() } : {}),
   verify: (code: string) => apiClient.post<{ verified: true }>('/v1/sign/personal/step-up/verify', { code }),
 };
+
+// SMS-CONSENT-1 §1 — the organization's SMS certification (owner / admin certify once; R-2)
+// and the signed-in user's own SMS consent (R-3). `available` is false until an SMS provider
+// can send and a text launch key is on (R-8): every screen that reads these stays hidden then.
+export interface SmsCertificationStatus {
+  available: boolean;
+  required: boolean;
+  certified: boolean;
+  certified_at: string | null;
+  certified_by_name: string | null;
+  wording_version: string | null;
+  wording: string | null;
+}
+
+export type SmsConsentChannel = 'WEB' | 'APP' | 'SIGNUP';
+
+export interface SmsConsentStatus {
+  available: boolean;
+  phone_masked: string | null;
+  phone_verified: boolean;
+  consented: boolean;
+  consented_at: string | null;
+  wording_version: string | null;
+  wording: string | null;
+}
+
+/** POST …/sms-consent/phone — the code was sent (fields beyond `sent` are read when present). */
+export interface SmsConsentCodeSent {
+  sent?: boolean;
+  phone_masked?: string;
+  expires_in_seconds?: number;
+  resend_after_seconds?: number;
+}
+
+export const smsCertificationApi = {
+  get: () => apiClient.get<SmsCertificationStatus>(`${BASE}/sms-certification`),
+  certify: (wording_version: string) => apiClient.post<SmsCertificationStatus>(`${BASE}/sms-certification`, { wording_version }),
+  withdraw: () => apiClient.delete<SmsCertificationStatus | undefined>(`${BASE}/sms-certification`),
+};
+
+export const smsConsentApi = {
+  get: () => apiClient.get<SmsConsentStatus>('/v1/sign/me/sms-consent'),
+  sendCode: (phone_e164: string) => apiClient.post<SmsConsentCodeSent>('/v1/sign/me/sms-consent/phone', { phone_e164: phone_e164.trim() }),
+  verify: (code: string) => apiClient.post<unknown>('/v1/sign/me/sms-consent/verify', { code }),
+  put: (body: { consented: boolean; wording_version: string; channel: SmsConsentChannel }) => apiClient.put<unknown>('/v1/sign/me/sms-consent', body),
+  remove: () => apiClient.delete<unknown>('/v1/sign/me/sms-consent'),
+};
+
+/** The send flow's note (§2): text options are launched and in the plan, but not certified yet. */
+export function smsCertificationPending(ctx: Pick<SenderContext, 'sms_certification'>): boolean {
+  return ctx.sms_certification?.required === true && ctx.sms_certification.certified !== true;
+}
 
 /** The refusal's details.reason (null for a non-API error). */
 export function refusalReason(e: unknown): string | null {

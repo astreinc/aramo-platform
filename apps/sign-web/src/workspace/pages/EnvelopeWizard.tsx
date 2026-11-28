@@ -37,6 +37,7 @@ import {
   MAX_SIGNERS,
   refusalReason,
   senderApi,
+  smsCertificationPending,
   stepUpApi,
   type ContactRow,
   type CopyDelivery,
@@ -50,6 +51,7 @@ import {
   validAccessCode,
 } from '../api';
 import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, LinkBtn, Loading, RecipientPill, Sel, TextIn, fmtBytes } from '../ui';
+import { SMS_SEND_NOTE } from '../sms-consent-copy';
 import { useWorkspace } from '../workspace';
 
 import { CloudImportButton } from './CloudStorage';
@@ -467,7 +469,9 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
   const [list, setList] = useState<DraftRecipient[]>(() => env.recipients.map(toDraft));
   // Consolidated Directive B2 — each control shows only while the sender context reports it available.
   // C3 (audit row 15) — the per-recipient options from the sender context (@aramo/sign-client).
-  const options = sendFeaturesOf(ctx);
+  // SMS-CONSENT-1 §2 — until the organization certifies, the note replaces the SMS options.
+  const smsPending = smsCertificationPending(ctx);
+  const options = smsOptionsOf(ctx);
   const messagingOn = options.sms || options.whatsapp || options.smsCode;
   const [allowDelegation, setAllowDelegation] = useState(env.allow_delegation === true);
   // SIGN-FREE-PARITY-1 S4 — automatic reminders (default on; all plans).
@@ -830,6 +834,12 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                   </label>
                 ) : null}
                 {messagingOn && r.kind === 'SIGNER' ? <TextMessageControl r={r} msg={msgFor(r)} onChange={(m) => upd(r.key, { msg: m })} /> : null}
+                {/* SMS-CONSENT-1 §2 — texts launched and in the plan, but the organization has not certified. */}
+                {smsPending && r.kind === 'SIGNER' ? (
+                  <p className="sg-help" style={{ margin: 0 }} data-testid="sms-certification-note">
+                    {SMS_SEND_NOTE}
+                  </p>
+                ) : null}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                   <span style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                     {r.role_key != null ? (
@@ -981,11 +991,18 @@ function AccessCodeControl({ r, onChange }: { r: DraftRecipient; onChange: (code
   );
 }
 
+// SMS-CONSENT-1 §2 — the per-recipient options, with the SMS ones withheld while the
+// organization's certification is pending (the server also refuses them then).
+function smsOptionsOf(ctx: Parameters<typeof sendFeaturesOf>[0] & Parameters<typeof smsCertificationPending>[0]) {
+  const options = sendFeaturesOf(ctx);
+  return smsCertificationPending(ctx) ? { ...options, sms: false, smsCode: false } : options;
+}
+
 // B2 / Feature-Parity §1.7–§1.9 — the signing link also by SMS or WhatsApp, and an SMS code
 // before signing. Each option shows only while available; the number is checked as E.164.
 function TextMessageControl({ r, msg, onChange }: { r: DraftRecipient; msg: Msg; onChange: (m: Msg) => void }) {
   const { ctx } = useWorkspace();
-  const options = sendFeaturesOf(ctx);
+  const options = smsOptionsOf(ctx);
   const needsPhone = msg.channel !== null || msg.otp;
   const phoneBad = needsPhone && msg.phone.trim() !== '' && !E164_RE.test(msg.phone.trim());
   return (
