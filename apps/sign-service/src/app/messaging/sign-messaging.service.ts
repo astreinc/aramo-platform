@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { SIGNER_VERIFIED_NUMBER_DESTINATION, SIGNER_VERIFIED_NUMBER_LABEL } from '@aramo/sign-client';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   OUTBOUND_MESSAGING_PORT,
@@ -186,10 +187,13 @@ export class SignMessagingService implements SignerLinkMessagingPort {
     now: Date,
   ): Promise<SendOutcome> {
     const hash = phoneHash(m.to_e164);
-    const masked = maskPhone(m.shown_e164 ?? m.to_e164);
+    // SMS-CONSENT-1 A1 — a text routed to the signer's own consented number (R-5) is recorded as
+    // such, never as the sender-typed number's mask (the evidence names what was really texted).
+    const ownNumber = m.shown_e164 !== undefined && m.shown_e164 !== m.to_e164;
+    const masked = ownNumber ? SIGNER_VERIFIED_NUMBER_LABEL : maskPhone(m.to_e164);
     const ledgered = m.purpose !== 'OTP';
     const base = { tenant_id: m.tenant_id, envelope_id: m.envelope_id, signer_id: m.signer_id, channel: m.channel, purpose: m.purpose, phone_hash: hash, phone_masked: masked };
-    const eventPayload = { channel: m.channel, purpose: m.purpose, phone: masked };
+    const eventPayload = { channel: m.channel, purpose: m.purpose, phone: masked, ...(ownNumber ? { destination: SIGNER_VERIFIED_NUMBER_DESTINATION } : {}) };
 
     const suppress = async (reason: SuppressedReason): Promise<SendOutcome> => {
       const r = await this.repo.recordDelivery(

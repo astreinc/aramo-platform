@@ -22,7 +22,7 @@ export class SavedDataPurgeService {
     const saved_signatures = await this.signatures.removeAllForUser(input.tenant_id, input.user_id);
     const contacts = await this.contacts.removeAllForUser(input.tenant_id, input.user_id);
     const own = await this.userData?.removeAllForUser(input.tenant_id, input.user_id);
-    const profile = own === undefined ? '' : ` profiles=${own.profiles} settings=${own.settings} app_issue_reports=${own.app_issue_reports} template_favorites=${own.template_favorites} folders=${own.folders}`;
+    const profile = own === undefined ? '' : ` profiles=${own.profiles} settings=${own.settings} app_issue_reports=${own.app_issue_reports} template_favorites=${own.template_favorites} folders=${own.folders} sms_consents=${own.sms_consents} sms_codes=${own.sms_codes}`;
     this.log.log(`account-close purge tenant=${input.tenant_id} user=${input.user_id} saved_signatures=${saved_signatures} contacts=${contacts}${profile}`);
     return { saved_signatures, contacts };
   }

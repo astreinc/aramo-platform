@@ -458,6 +458,7 @@ export {
 } from './lib/cloud-storage.js';
 // SMS-CONSENT-1 — consent for texts to signers: the wording and its versions, the signer code
 // text, the API shapes, the refusal copy and the send-flow rule (server, sign-web and the app).
+export { SIGNER_VERIFIED_NUMBER_LABEL, SIGNER_VERIFIED_NUMBER_DESTINATION } from './lib/sms-consent.js';
 export {
   SMS_CERTIFICATION_WORDING_VERSION,
   SMS_CERTIFICATION_WORDING,

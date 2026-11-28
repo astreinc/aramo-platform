@@ -5,8 +5,10 @@ import { AramoError } from '@aramo/common';
 import { JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { REQUIRED_SCOPES_KEY } from '@aramo/authorization';
 import { EsignSenderConsumerGuard, type IdentityRepository, type TenantRepository } from '@aramo/identity';
+import { SIGNER_VERIFIED_NUMBER_LABEL } from '@aramo/sign-client';
 import { FEATURE_AVAILABILITY } from '@aramo/subscription';
 import {
+  SignUserProfileRepository,
   phoneHash,
   type LedgerAppend,
   type NewDelivery,
@@ -615,13 +617,16 @@ describe('SMS-CONSENT-1 R-5 — the signer’s own consented number first, never
     return { w, repo, port, messaging };
   }
 
-  it('the link goes to the consented number; every sender-visible record shows the typed number', async () => {
+  // A1 — the evidence names what was really texted: the label, never the typed number's mask.
+  it('the link goes to the consented number; every sender-visible record says the signer’s own verified number (A1)', async () => {
     const { repo, port, messaging } = setup();
     await messaging.deliverSigningLink(link);
     expect(port.sent).toHaveLength(1);
     expect(port.sent[0]?.to_e164).toBe(OWN);
-    expect(repo.deliveries[0]).toMatchObject({ status: 'SENT', phone_masked: typedMask, phone_hash: phoneHash(OWN) });
-    expect(repo.ledger[0]).toMatchObject({ event_type: 'SIGNER_MESSAGE_SENT', payload: expect.objectContaining({ phone: typedMask }) });
+    expect(repo.deliveries[0]).toMatchObject({ status: 'SENT', phone_masked: SIGNER_VERIFIED_NUMBER_LABEL, phone_hash: phoneHash(OWN) });
+    expect(repo.ledger[0]).toMatchObject({ event_type: 'SIGNER_MESSAGE_SENT', payload: expect.objectContaining({ phone: SIGNER_VERIFIED_NUMBER_LABEL, destination: 'SIGNER_VERIFIED_NUMBER' }) });
+    expect(JSON.stringify(repo.ledger)).not.toContain(typedMask);
+    expect(JSON.stringify(repo.deliveries)).not.toContain(typedMask);
     expect(JSON.stringify(repo.ledger)).not.toContain(ownMask);
     expect(JSON.stringify(repo.deliveries)).not.toContain(ownMask);
   });
@@ -666,7 +671,7 @@ describe('SMS-CONSENT-1 R-5 — the signer’s own consented number first, never
     s.repo.optOuts.set(`${phoneHash(OWN)}:SMS`, true);
     await s.messaging.deliverSigningLink(link);
     expect(s.port.sent).toHaveLength(0);
-    expect(s.repo.deliveries[0]).toMatchObject({ status: 'SUPPRESSED', suppressed_reason: 'opted_out', phone_masked: typedMask });
+    expect(s.repo.deliveries[0]).toMatchObject({ status: 'SUPPRESSED', suppressed_reason: 'opted_out', phone_masked: SIGNER_VERIFIED_NUMBER_LABEL });
     expect(repo.deliveries).toHaveLength(0);
   });
 
@@ -680,7 +685,7 @@ describe('SMS-CONSENT-1 R-5 — the signer’s own consented number first, never
     expect(w.consent.consents.get(USER)?.revoked_at).not.toBeNull();
   });
 
-  it('the SMS code: sent to the consented number with the signer code text; the signer sees that number, the ledger the typed one', async () => {
+  it('the SMS code: sent to the consented number with the signer code text; the signer sees that number, the evidence the label (A1)', async () => {
     const { repo, port, messaging, w } = setup();
     const otp = new RecipientOtpService(repo as unknown as SignMessagingRepository, messaging, undefined, w.facts);
     const ctx: SessionContext = { session_id: SESSION, tenant_id: TENANT, envelope_id: ENVELOPE, signer_id: SIGNER };
@@ -689,9 +694,10 @@ describe('SMS-CONSENT-1 R-5 — the signer’s own consented number first, never
     expect(sent).toMatchObject({ sent: true, phone: ownMask });
     expect(port.sent[0]).toMatchObject({ to_e164: OWN, purpose: 'OTP', variant: 'SIGNER_CODE' });
     expect(smsText(port.sent[0] as OutboundMessage).endsWith('Reply STOP to opt out.')).toBe(true);
-    expect(repo.challenges[0]).toMatchObject({ phone_masked: typedMask, phone_hash: phoneHash(OWN) });
-    expect(repo.ledger.find((e) => e.event_type === 'RECIPIENT_OTP_SENT')?.payload).toMatchObject({ phone: typedMask });
-    expect(repo.deliveries[0]).toMatchObject({ phone_masked: typedMask });
+    expect(repo.challenges[0]).toMatchObject({ phone_masked: SIGNER_VERIFIED_NUMBER_LABEL, phone_hash: phoneHash(OWN) });
+    expect(repo.ledger.find((e) => e.event_type === 'RECIPIENT_OTP_SENT')?.payload).toMatchObject({ phone: SIGNER_VERIFIED_NUMBER_LABEL });
+    expect(repo.deliveries[0]).toMatchObject({ phone_masked: SIGNER_VERIFIED_NUMBER_LABEL });
+    expect(JSON.stringify(repo.ledger)).not.toContain(typedMask);
     expect(JSON.stringify(repo.ledger)).not.toContain(ownMask);
   });
 
@@ -711,3 +717,25 @@ describe('SMS-CONSENT-1 R-6 — the texts', () => {
     expect(smsText(base)).toBe('Your Aramo Sign verification code is 123456. It expires in 10 minutes. Do not share it.');
   });
 });
+
+// SMS-CONSENT-1 A1 — account deletion and privacy erasure remove the person's SMS consent and codes.
+describe('SMS-CONSENT-1 A1 — erasure', () => {
+  it('removeAllForUser deletes the SMS consent and codes with the other user data and counts them', async () => {
+    const del = (count: number) => vi.fn(async () => ({ count }));
+    const tx = {
+      signUserProfile: { deleteMany: del(1) },
+      signUserSettings: { deleteMany: del(1) },
+      signAppIssueReport: { deleteMany: del(0) },
+      signUserFavorite: { deleteMany: del(0) },
+      signUserFolder: { deleteMany: del(2) },
+      signUserSmsConsent: { deleteMany: del(1) },
+      signUserSmsCode: { deleteMany: del(3) },
+    };
+    const prisma = { $transaction: async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx) };
+    const counts = await new SignUserProfileRepository(prisma as never).removeAllForUser(TENANT, USER);
+    expect(counts).toMatchObject({ folders: 2, sms_consents: 1, sms_codes: 3 });
+    expect(tx.signUserSmsConsent.deleteMany).toHaveBeenCalledWith({ where: { user_id: USER } });
+    expect(tx.signUserSmsCode.deleteMany).toHaveBeenCalledWith({ where: { user_id: USER } });
+  });
+});
+

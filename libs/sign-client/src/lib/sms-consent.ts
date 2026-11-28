@@ -30,6 +30,14 @@ export function signerSmsCodeText(code: string, ttl_minutes: number): string {
 }
 
 /** Where a user gave their consent (SignUserSmsConsent.consent_channel). */
+/**
+ * SMS-CONSENT-1 A1 (LOCKED 2026-11-28) — what every sender-visible record (delivery row, ledger,
+ * certificate) says when a text went to the signer's own consented number (R-5): never digits,
+ * never the sender-typed number. The real destination is kept only as a private hash.
+ */
+export const SIGNER_VERIFIED_NUMBER_LABEL = 'the signer’s own verified number on file';
+export const SIGNER_VERIFIED_NUMBER_DESTINATION = 'SIGNER_VERIFIED_NUMBER';
+
 export const SMS_CONSENT_CHANNELS = ['WEB', 'APP', 'SIGNUP'] as const;
 export type SmsConsentChannel = (typeof SMS_CONSENT_CHANNELS)[number];
 

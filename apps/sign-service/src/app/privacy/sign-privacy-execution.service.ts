@@ -310,7 +310,7 @@ export class SignPrivacyExecutionService {
     const own = await this.userData?.removeAllForUser(owner.tenant_id, owner.user_id);
     const userData: Record<string, number> = own === undefined
       ? {}
-      : { sign_profiles_deleted: own.profiles, sign_settings_deleted: own.settings, app_issue_reports_deleted: own.app_issue_reports, template_favorites_deleted: own.template_favorites, folders_deleted: own.folders };
+      : { sign_profiles_deleted: own.profiles, sign_settings_deleted: own.settings, app_issue_reports_deleted: own.app_issue_reports, template_favorites_deleted: own.template_favorites, folders_deleted: own.folders, sms_consents_deleted: own.sms_consents, sms_codes_deleted: own.sms_codes };
     return { ...push, saved_signatures_deleted, contacts_deleted, ...userData };
   }
 

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { SIGNER_VERIFIED_NUMBER_LABEL } from '@aramo/sign-client';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import {
@@ -115,7 +116,9 @@ export class RecipientOtpService {
     const out: RequiredCode[] = [];
     if (sms !== null && sms.sms_otp_required && sms.envelope_id === ctx.envelope_id) {
       const to = (await this.consent?.consentedNumberOfSigner(ctx.tenant_id, ctx.signer_id)) ?? sms.phone_e164;
-      const shown = maskPhone(sms.phone_e164);
+      // SMS-CONSENT-1 A1 — routed to the signer's own consented number: the challenge, ledger and
+      // certificate say so, never the sender-typed number's mask. The signer still sees their mask.
+      const shown = to !== sms.phone_e164 ? SIGNER_VERIFIED_NUMBER_LABEL : maskPhone(sms.phone_e164);
       out.push({
         method: SMS_OTP_METHOD,
         masked: maskPhone(to),
