@@ -15,9 +15,11 @@ import {
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
+import { useServices } from '../../app/ServicesContext';
 import { Card } from '../../components/Card';
 import { OfflineBanner } from '../../components/Banner';
 import { DISABLED_OPACITY, useTheme } from '../../theme';
+import { SmsSignupStep } from '../account/TextMessagesSection';
 import { AgreementRowItem } from '../inbox/AgreementRowItem';
 import { mergeAgreements, type AgreementRow } from '../inbox/agreementsModel';
 import {
@@ -57,6 +59,7 @@ export function HomeBody() {
   const ctx = useSenderContext();
   const local = useLocalDrafts();
   const hint = useSwipeHint();
+  const { workspace } = useServices();
   const [refreshing, setRefreshing] = useState(false);
 
   // Local drafts change outside the query cache (Send flow): re-read on focus.
@@ -122,6 +125,7 @@ export function HomeBody() {
       onViewAll={() => openAgreements('all')}
       onTasks={() => navigation.navigate('Tasks')}
       onPlans={() => navigation.navigate('Plans', { from: 'home' })}
+      top={<SmsSignupStep workspace={workspace} />}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -150,6 +154,8 @@ export interface HomeViewProps {
   readonly onPlans?: () => void;
   readonly refreshControl?: ReactElement<RefreshControlProps>;
   readonly now?: number;
+  /** SMS-CONSENT-1 §2 — the optional step after signup (renders nothing unless offered). */
+  readonly top?: ReactElement;
 }
 
 /** Presentational Home (testable without navigation or queries). */
@@ -168,6 +174,7 @@ export function HomeView({
   onPlans,
   refreshControl,
   now,
+  top,
 }: HomeViewProps) {
   const t = useTheme();
   const ios = t.platform === 'ios';
@@ -190,6 +197,7 @@ export function HomeView({
           <OfflineBanner />
         </View>
       ) : null}
+      {top}
 
       {model.banner ? (
         <View

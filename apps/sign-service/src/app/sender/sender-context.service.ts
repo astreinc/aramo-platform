@@ -27,6 +27,7 @@ import { offeredCloudProviders } from '../cloud-storage/cloud-storage.config.js'
 import { SignPaymentsGate } from '../payments/sign-payments.gate.js';
 import { WORD_CONVERSION_PORT, type WordConversionPort } from '../word-conversion/word-conversion.port.js';
 import { SignWhatsappPlanGate } from '../messaging/whatsapp-plan.gate.js';
+import { SignSmsPolicy } from '../messaging/sms-policy.service.js';
 
 import { ESIGN_CREATE_SCOPE, ESIGN_READ_SCOPE, ESIGN_SEND_SCOPE, authorRefusal, personalSendingNotEnabled as personalSendingRefusal, refusalError } from './envelope-actions.js';
 import { templateAuthority, templateGrantsOf, templatePlanOf, type TemplatePlan } from './template-authority.js';
@@ -146,6 +147,10 @@ export interface SenderContextView {
   // (every plan): launch key AVAILABLE, the provider's OAuth app configured and the token key
   // set. Empty while dark: the web and the app show no cloud storage button.
   cloud_storage: Array<'google_drive' | 'onedrive' | 'dropbox' | 'box'>;
+  // SMS-CONSENT-1 R-2 — required: a text feature (sign.sms_delivery / sign.sms_otp) is launched and in
+  // the plan, so the organization's certification would turn it on; certified: the organization has a
+  // current certification. features.sms_delivery / sms_otp are true only when both hold.
+  sms_certification: { required: boolean; certified: boolean };
 }
 
 // A Personal account's workspace label, shown wherever the Sign apps name the
@@ -180,6 +185,8 @@ export class SenderContextService {
     @Optional() @Inject(WORD_CONVERSION_PORT) private readonly wordConversion?: WordConversionPort,
     // SIGN-FREE-PARITY-1 S5 — the per-plan WhatsApp entitlement (absent ⇒ launch availability only).
     @Optional() private readonly whatsappPlan?: SignWhatsappPlanGate,
+    // SMS-CONSENT-1 — plan + certification for the SMS features (absent ⇒ launch availability only).
+    @Optional() private readonly smsPolicy?: SignSmsPolicy,
   ) {}
 
   // TEMPLATE-PRODUCT-1 §8.1 / §8.5 — read only while sign.templates is available (every template
@@ -298,6 +305,13 @@ export class SenderContextService {
     const personal_account_owner = !business && tenant.kind === 'PERSONAL' && roleKeys.includes('tenant_owner');
     const templatesAvailable = (this.features ?? new SignFeatureGate()).isAvailable(SIGN_TEMPLATES_FEATURE);
     const templates = await this.templateView(auth, tenant.kind, templatesAvailable && permissions.templates);
+    const gate = this.features ?? new SignFeatureGate();
+    // SMS-CONSENT-1 R-2 / R-4 — launched AND in the plan AND certified; read only when a key is launched.
+    const smsLaunched = gate.isAvailable(SIGN_SMS_DELIVERY_FEATURE) || gate.isAvailable(SIGN_SMS_OTP_FEATURE);
+    const sms =
+      this.smsPolicy !== undefined && smsLaunched
+        ? await this.smsPolicy.featureState(tenant.id).catch(() => ({ sms_delivery: false, sms_otp: false, sms_certification: { required: false, certified: false } }))
+        : { sms_delivery: gate.isAvailable(SIGN_SMS_DELIVERY_FEATURE), sms_otp: gate.isAvailable(SIGN_SMS_OTP_FEATURE), sms_certification: { required: false, certified: false } };
     return {
       user: { id: auth.sub, email: user?.email ?? null, display_name: user?.display_name ?? null, identity_provider: await this.identityProviderOf(auth.sub, auth.tenant_id) },
       tenant: {
@@ -314,12 +328,12 @@ export class SenderContextService {
         witness_signing: business && (this.features ?? new SignFeatureGate()).isAvailable(SIGN_WITNESS_SIGNING_FEATURE),
         delegate_signing: business && (this.features ?? new SignFeatureGate()).isAvailable(SIGN_DELEGATE_SIGNING_FEATURE),
         access_code: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_ACCESS_CODE_FEATURE),
-        // B2 — no plan rule exists for messaging in code (OD-3 / D-D open): availability only.
-        sms_delivery: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_SMS_DELIVERY_FEATURE),
+        // SMS-CONSENT-1 — launched AND in the plan (BUSINESS on, PERSONAL off) AND the organization certified.
+        sms_delivery: sms.sms_delivery,
         // SIGN-FREE-PARITY-1 S5 — launched AND in the account's plan (FP-R3: off on Free, on for Business).
         whatsapp_delivery:
           (this.features ?? new SignFeatureGate()).isAvailable(SIGN_WHATSAPP_DELIVERY_FEATURE) && (this.whatsappPlan === undefined ? true : await this.whatsappPlan.entitled(tenant.id)),
-        sms_otp: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_SMS_OTP_FEATURE),
+        sms_otp: sms.sms_otp,
         // SIGN-FREE-PARITY-1 S3 (FP-R4) — every plan: launch availability only.
         email_otp: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_EMAIL_OTP_FEATURE),
         // B2 — identity checks are refused for a Personal account (plan_not_eligible).
@@ -341,6 +355,7 @@ export class SenderContextService {
       ...templates,
       word_conversion_enabled: this.wordConversion?.enabled === true,
       cloud_storage: offeredCloudProviders((k) => (this.features ?? new SignFeatureGate()).isAvailable(k)),
+      sms_certification: sms.sms_certification,
     };
   }
 }

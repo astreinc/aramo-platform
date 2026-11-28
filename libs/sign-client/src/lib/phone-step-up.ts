@@ -42,6 +42,8 @@ export const PHONE_STEP_UP_COPY = {
   phoneHint: PHONE_HINT,
   useAnotherNumber: 'Use another number',
   sendCode: 'Text me a code',
+  // SMS-OPTIN-1 (LOCKED 2026-11-28) — the 10DLC opt-in disclosure, shown with the button every time.
+  smsDisclosure: 'We’ll text one 6-digit code to this number. Msg & data rates may apply. Reply STOP to opt out.',
   sending: 'Sending…',
   codeLabel: '6-digit code',
   verify: 'Verify',

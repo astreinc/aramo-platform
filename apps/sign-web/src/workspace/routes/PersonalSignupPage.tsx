@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'rea
 import { AppleLogo, loginUrl } from '@aramo/fe-foundation';
 
 import { legalPath, MAXMIND_ATTRIBUTION, MAXMIND_URL, THIRD_PARTY_NOTICES_PATH } from '../legal/catalog';
+import { markSmsSignupOffer } from '../sms-signup-offer';
 
 import {
   codeFailureMessage,
@@ -310,9 +311,11 @@ export function PersonalSignupPage({ siteKey = turnstileSiteKey() }: { siteKey?:
           id={step.id}
           withPhone={withPhone}
           {...(step.notice !== undefined ? { notice: step.notice } : {})}
-          onDone={(signIn, held) =>
-            setStep({ k: 'done', signIn, held: held === undefined ? hint : held })
-          }
+          onDone={(signIn, held) => {
+            // SMS-CONSENT-1 §2 — offer the optional text-messages step after the first sign-in.
+            markSmsSignupOffer();
+            setStep({ k: 'done', signIn, held: held === undefined ? hint : held });
+          }}
           onRestart={restart}
         />
       );

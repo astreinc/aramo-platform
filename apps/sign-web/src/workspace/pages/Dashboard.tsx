@@ -6,6 +6,7 @@ import { ErrorBox, Loading, StatusPill, rel } from '../ui';
 import { useWorkspace } from '../workspace';
 
 import { PersonalAllowance } from './PersonalAllowance';
+import { SmsSignupStep } from './TextMessages';
 
 function greeting(now: Date): string {
   const h = now.getHours();
@@ -49,6 +50,8 @@ export function Dashboard() {
       ) : null}
       {/* Aramo Sign Personal (Free) §4 — 2 a day, 5 a month, from the backend's ledger. */}
       {personal && ctx.personal_sending_enabled === true ? <PersonalAllowance /> : null}
+      {/* SMS-CONSENT-1 §2 (R-3) — the optional step after signup (only while texts are available). */}
+      <SmsSignupStep />
       {error !== '' ? <ErrorBox>{error}</ErrorBox> : null}
       {summary === null && error === '' ? <Loading /> : null}
       {summary !== null ? (

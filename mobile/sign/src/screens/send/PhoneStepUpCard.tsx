@@ -128,6 +128,9 @@ export function PhoneStepUpCard({
               disabled={busy || (stage.entering && phone.trim() === '')}
               testID="step-up-send"
             />
+            <Text style={body} testID="step-up-disclosure">
+              {C.smsDisclosure}
+            </Text>
           </>
         ) : null}
         {stage.k === 'code' ? (

@@ -206,6 +206,7 @@ export function RecipientsStep({
   roles = FEATURES.recipientRoles,
   inPerson = false,
   features = NO_SEND_FEATURES,
+  smsPending = false,
 }: {
   readonly controller: SendFlowController;
   readonly state: SendFlowState;
@@ -217,6 +218,8 @@ export function RecipientsStep({
   readonly inPerson?: boolean;
   /** B2 — the options the sender context reports available (all off by default). */
   readonly features?: SendFeatures;
+  /** SMS-CONSENT-1 §2 — texts are launched and in the plan, but the organization has not certified. */
+  readonly smsPending?: boolean;
 }) {
   const t = useTheme();
   const [sheet, setSheet] = useState(false);
@@ -341,7 +344,7 @@ export function RecipientsStep({
             </View>
           ) : null}
           <View style={styles.options}>
-            <RecipientOptions r={r} list={recipients} features={features} controller={controller} />
+            <RecipientOptions r={r} list={recipients} features={features} controller={controller} smsPending={smsPending} />
           </View>
         </View>
       </Card>

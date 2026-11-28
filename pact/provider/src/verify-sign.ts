@@ -81,6 +81,11 @@ const SIGN_WEB_PACT_FILE = resolve(ROOT, 'pact/pacts/sign-web-sign-service.json'
 // every Sign migration above) adds SignUserFolder / SignUserFolderItem. The sender list and
 // detail and every inbox item gain `folder_id` (null when the user has no folders, as in every
 // recorded interaction): an added member only, so no interaction changes and nothing is seeded.
+// SMS-CONSENT-1 — migration 20261128100000_sign_sms_consent_1 (applied with every Sign migration
+// above) adds SignSmsCertification / SignUserSmsConsent / SignUserSmsCode. The sender context gains
+// `sms_certification` ({ required: false, certified: false } while the SMS launch keys are
+// NOT_AVAILABLE, as in every recorded interaction; the table is not read then): an added member
+// only, so no interaction changes and nothing is seeded. The new routes have no recorded interaction.
 const ESIGN_WEB_PACT_FILE = resolve(ROOT, 'pact/pacts/sign-workspace-sign-service.json');
 // Aramo Sign Mobile — the native app → sign-service pact (directive §4 B-12). Its
 // consumer `sign-mobile` also has a separate pact with aramo-auth-service (verify.ts).

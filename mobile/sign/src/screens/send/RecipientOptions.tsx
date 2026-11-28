@@ -11,6 +11,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { EMAIL_CODE_OPTION } from '@aramo/sign-client';
 
 import { Button } from '../../components/Button';
+import { SMS_SEND_NOTE } from '../../features/account/smsConsentCopy';
 import { Segments, SettingRow } from '../../features/inbox/ui';
 import { NO_MESSAGING, type DraftRecipient, type IdentityCheck, type TextChannel } from '../../features/send/draftModel';
 import {
@@ -41,6 +42,16 @@ export function hasOptions(r: DraftRecipient, f: SendFeatures): boolean {
     (f.witness && isWitness(r)) ||
     (takesLinkChecks(r) && (f.accessCode || f.idCheck || f.kba || f.emailCode || r.emailOtp === true)) ||
     (takesMessaging(r) && (f.sms || f.whatsapp || f.smsCode))
+  );
+}
+
+/** SMS-CONSENT-1 §2 — shown instead of the SMS options until the organization certifies. */
+function SmsCertificationNote({ testID }: { readonly testID: string }) {
+  const t = useTheme();
+  return (
+    <Text testID={testID} style={{ color: t.color.textSecondary, fontSize: 13, fontFamily: t.font.family }}>
+      {SMS_SEND_NOTE}
+    </Text>
   );
 }
 
@@ -237,13 +248,17 @@ export function RecipientOptions({
   list,
   features: f,
   controller,
+  smsPending = false,
 }: {
   readonly r: DraftRecipient;
   readonly list: readonly DraftRecipient[];
   readonly features: SendFeatures;
   readonly controller: SendFlowController;
+  /** SMS-CONSENT-1 §2 — texts launched and in the plan, but the organization has not certified. */
+  readonly smsPending?: boolean;
 }) {
-  if (!hasOptions(r, f)) return null;
+  const smsNote = smsPending && takesMessaging(r);
+  if (!hasOptions(r, f) && !smsNote) return null;
   const identities: { key: IdentityKey; label: string }[] = [
     { key: 'NONE', label: 'None' },
     ...(f.idCheck ? [{ key: 'ID_VERIFICATION' as const, label: 'ID check' }] : []),
@@ -277,6 +292,7 @@ export function RecipientOptions({
       {(f.sms || f.whatsapp || f.smsCode) && takesMessaging(r) ? (
         <TextDelivery r={r} f={f} controller={controller} />
       ) : null}
+      {smsNote ? <SmsCertificationNote testID={`sms-certification-note-${r.key}`} /> : null}
     </View>
   );
 }

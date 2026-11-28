@@ -458,3 +458,27 @@ export {
   type CloudProviderId,
   type CloudConnectResult,
 } from './lib/cloud-storage.js';
+// SMS-CONSENT-1 — consent for texts to signers: the wording and its versions, the signer code
+// text, the API shapes, the refusal copy and the send-flow rule (server, sign-web and the app).
+export { SIGNER_VERIFIED_NUMBER_LABEL, SIGNER_VERIFIED_NUMBER_DESTINATION } from './lib/sms-consent.js';
+export {
+  SMS_CERTIFICATION_WORDING_VERSION,
+  SMS_CERTIFICATION_WORDING,
+  SMS_CONSENT_WORDING_VERSION,
+  SMS_CONSENT_WORDING,
+  SIGNER_SMS_CODE_TEXT,
+  signerSmsCodeText,
+  SMS_CONSENT_CHANNELS,
+  isSmsConsentChannel,
+  SMS_NOT_IN_PLAN_REASON,
+  SMS_CONSENT_NOT_CERTIFIED_REASON,
+  SMS_NOT_CERTIFIED_NOTE,
+  SMS_CONSENT_REFUSAL_COPY,
+  SMS_CONSENT_COPY,
+  smsSendOptionsState,
+  type SmsConsentChannel,
+  type SmsCertificationView,
+  type UserSmsConsentView,
+  type UserSmsCodeSent,
+  type SenderSmsCertification,
+} from './lib/sms-consent.js';

@@ -7,6 +7,7 @@ import {
   type OutboundSendResult,
   maskPhone,
 } from '@aramo/sign';
+import { signerSmsCodeText } from '@aramo/sign-client';
 
 // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.7 / §1.8, Amendment A1 §A1.1 —
 // OUTBOUND_MESSAGING_PORT bindings. Default vendors per §5 D-3: AWS End User Messaging SMS
@@ -55,6 +56,9 @@ export function smsText(message: OutboundMessage): string {
     case 'REMINDER':
       return `Reminder: ${who} is waiting for your signature in Aramo Sign: ${v.signing_url ?? ''} Reply STOP to opt out.`;
     case 'OTP':
+      // SMS-CONSENT-1 R-6 — the signer code text (one copy in @aramo/sign-client) ends with STOP;
+      // the sender's own step-up code text stays exactly as it was.
+      if (message.variant === 'SIGNER_CODE') return signerSmsCodeText(v.code ?? '', v.ttl_minutes ?? 10);
       return `Your Aramo Sign verification code is ${v.code ?? ''}. It expires in ${v.ttl_minutes ?? 10} minutes. Do not share it.`;
   }
 }

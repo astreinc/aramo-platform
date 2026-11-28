@@ -62,6 +62,10 @@ export interface SignUserDataCounts {
   template_favorites: number;
   // SIGN-FREE-PARITY-1 S7 — the user's own folders (their items go with them).
   folders: number;
+  // SMS-CONSENT-1 A1 — the person's own SMS consent (number + consent) and pending codes. Per
+  // person, not per organization: deleted with the account or on privacy erasure.
+  sms_consents: number;
+  sms_codes: number;
 }
 
 // C0-2 — formatSignDate / resolveSignerTimeZone live in the pure domain module (re-exported).
@@ -188,6 +192,8 @@ export class SignUserProfileRepository {
       app_issue_reports: await this.prisma.signAppIssueReport.count({ where: owner }),
       template_favorites: await this.prisma.signUserFavorite.count({ where: owner }),
       folders: await this.prisma.signUserFolder.count({ where: { tenant_id, owner_user_id: user_id } }),
+      sms_consents: await this.prisma.signUserSmsConsent.count({ where: { user_id } }),
+      sms_codes: await this.prisma.signUserSmsCode.count({ where: { user_id } }),
     };
   }
 
@@ -201,6 +207,9 @@ export class SignUserProfileRepository {
       template_favorites: (await tx.signUserFavorite.deleteMany({ where: owner })).count,
       // S7 — the folder rows; their items go by FK cascade (never an envelope).
       folders: (await tx.signUserFolder.deleteMany({ where: { tenant_id, owner_user_id: user_id } })).count,
+      // SMS-CONSENT-1 A1 — the person's SMS consent and pending codes.
+      sms_consents: (await tx.signUserSmsConsent.deleteMany({ where: { user_id } })).count,
+      sms_codes: (await tx.signUserSmsCode.deleteMany({ where: { user_id } })).count,
     }));
   }
 }

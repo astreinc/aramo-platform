@@ -854,6 +854,11 @@ function SelfSignLayout({
   const resizedBy = Math.max(0, heights.full - heights.current);
   const findBottom = Math.max(0, keyboard - resizedBy - sheetHeight);
   const sheetLift = find.open ? 0 : Math.max(0, keyboard - resizedBy - bottomInset);
+  // APP-SELFSIGN-PANEL-1 (UAT date picker) — the selected field's value editor scrolls inside a
+  // capped area, so a tall editor (the DATE month grid and its Save) never pushes the panel past
+  // the screen or under the navigation bar; the tools, page controls and Finish stay visible.
+  const { height: windowHeight } = useWindowDimensions();
+  const extraMax = Math.round(windowHeight * SELF_EXTRA_MAX_SHARE);
   return (
     <View
       style={styles.fill}
@@ -900,9 +905,15 @@ function SelfSignLayout({
       >
         <View style={styles.selfHandle} />
         {extra ? (
-          <View testID="self-selection" style={styles.selfExtra}>
+          <ScrollView
+            testID="self-selection"
+            style={[styles.noShrink, { maxHeight: extraMax }]}
+            contentContainerStyle={styles.selfExtra}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+          >
             {extra}
-          </View>
+          </ScrollView>
         ) : null}
         <ToolRow tools={tools} tool={tool} testID="self-tools" testPrefix="self-tool" onPick={onPickTool} />
         {armed ? (
@@ -1337,6 +1348,9 @@ function CheckboxSettings({
     </View>
   );
 }
+
+/** APP-SELFSIGN-PANEL-1 — the share of the window the self-sign value editor may take. */
+export const SELF_EXTRA_MAX_SHARE = 0.4;
 
 const styles = StyleSheet.create({
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, minHeight: 44, fontSize: 16 },

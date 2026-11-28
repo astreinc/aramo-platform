@@ -1,9 +1,11 @@
+import { useEffect, useState } from 'react';
 import { NavLink, Navigate, useLocation, useParams } from 'react-router-dom';
 import { logout, ssoEntryHref } from '@aramo/fe-foundation';
 import { cloudProvidersOf } from '@aramo/sign-client';
 
+import { smsCertificationApi, type SmsCertificationStatus } from '../api';
 import { orgLinkWithReturn } from '../org-link';
-import { Btn, Check, Field, Icon, LinkBtn, Sel } from '../ui';
+import { Btn, Check, Field, Icon, LinkBtn, Loading, Sel } from '../ui';
 import { useWorkspace } from '../workspace';
 
 import { BillingPanel } from './Billing';
@@ -26,6 +28,9 @@ import { PaymentsSection } from './Payments';
 import { DevicesSection } from './DevicesSection';
 // SIGN-FREE-PARITY-1 S6 — Connected storage (shown only while a provider is offered).
 import { CloudStorageSection } from './CloudStorage';
+// SMS-CONSENT-1 §2 — the organization's SMS certification and the user's own text messages.
+import { SmsCertificationSection } from './SmsCertification';
+import { TextMessagesSection } from './TextMessages';
 
 // ORG-UX-1 §6/§7.2 — Organization links carry this Sign Settings page as the return.
 function useOrgLink(): (orgUrl: string) => string {
@@ -61,6 +66,8 @@ const SECTIONS = [
   { key: 'retention', label: 'Document retention' },
   // Aramo Sign 1.14 — payment collection through the organization's own Stripe account.
   { key: 'payments', label: 'Payments' },
+  // SMS-CONSENT-1 §2 (R-2) — Business owner / admin certify once (shown only while texts are available).
+  { key: 'sms', label: 'Text messages (SMS)' },
   { key: 'integrations', label: 'Integrations' },
   { key: 'audit', label: 'Envelope audit' },
 ] as const;
@@ -71,6 +78,27 @@ export function SettingsPage({ scopes = [] }: { scopes?: readonly string[] } = {
   const personalWs = ctx.workspace === 'personal';
   // Sign Unified Product S-1 — Members only for holders of sign:member:manage.
   const cloudOffered = cloudProvidersOf(ctx).length > 0;
+  // SMS-CONSENT-1 §2 — read only for a Business organization's owner / admin; the section
+  // shows only while the server says texts are available (dark until then, R-8).
+  const smsAdmin = !personalWs && ctx.org_admin === true;
+  const [smsCert, setSmsCert] = useState<SmsCertificationStatus | null | 'loading'>(smsAdmin ? 'loading' : null);
+  useEffect(() => {
+    if (!smsAdmin) return undefined;
+    let live = true;
+    smsCertificationApi.get().then(
+      (s) => {
+        if (live) setSmsCert(s);
+      },
+      () => {
+        if (live) setSmsCert(null);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [smsAdmin]);
+  const smsStatus = smsCert !== null && smsCert !== 'loading' && smsCert.available === true ? smsCert : null;
+  const smsOffered = smsStatus !== null;
   const allowed = (
     personalWs
       ? ['personal', 'profile', 'billing', 'devices', 'storage', 'retention']
@@ -79,9 +107,11 @@ export function SettingsPage({ scopes = [] }: { scopes?: readonly string[] } = {
           .filter((k) => k !== 'domain' || scopes.includes('tenant:admin:domain'))
           // Sign 1.14 — shown only while payments are available to this organization.
           .filter((k) => k !== 'payments' || ctx.features?.payments === true)
+          .filter((k) => k !== 'sms' || smsOffered)
   )
     // SIGN-FREE-PARITY-1 S6 — shown only while a cloud storage provider is offered.
     .filter((k) => k !== 'storage' || cloudOffered);
+  if (section === 'sms' && smsCert === 'loading') return <Loading />;
   if (!allowed.includes(section)) return <Navigate to={`${base}/settings/personal`} replace />;
   const org = ctx.organization_url;
   const orgLink = useOrgLink();
@@ -116,6 +146,7 @@ export function SettingsPage({ scopes = [] }: { scopes?: readonly string[] } = {
           {section === 'security' ? <SecuritySection /> : null}
           {section === 'retention' ? <RetentionSection /> : null}
           {section === 'payments' ? <PaymentsSection /> : null}
+          {section === 'sms' && smsStatus !== null ? <SmsCertificationSection status={smsStatus} onChange={setSmsCert} /> : null}
           {section === 'integrations' ? <IntegrationsSection /> : null}
           {section === 'audit' ? <AuditSection /> : null}
         </div>
@@ -170,6 +201,8 @@ function PersonalSection() {
       <SignInMethodsSection />
       <SavedSignatureSection />
       <SignPreferencesSection />
+      {/* SMS-CONSENT-1 §2 (R-3) — the user's own number and consent (only while texts are available). */}
+      <TextMessagesSection />
       <section className="sg-card">
         <div className="sg-card__head">
           Sign notifications <span className="sg-tag sg-tag--blue">Sign only</span>
