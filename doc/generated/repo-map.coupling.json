@@ -11621,6 +11621,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/sign-service/src/app/messaging/sms-consent.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/sign-service/src/app/payments/sign-payments-public.controller.ts"
     },
     {
@@ -34680,6 +34685,11 @@
       "from": "libs/sign-client/src/index.ts",
       "status": "production",
       "to": "mobile/sign/metro.config.js"
+    },
+    {
+      "from": "libs/sign-client/src/lib/sms-consent.ts",
+      "status": "production",
+      "to": "openapi/sign.yaml"
     },
     {
       "from": "libs/sign-client/src/lib/turn-rules.ts",

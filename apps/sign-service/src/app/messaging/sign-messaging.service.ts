@@ -21,6 +21,7 @@ import {
   type InboundKeyword,
   type MessagePurpose,
   type MessagingChannel,
+  type OutboundMessageVariant,
   type OutboundMessagingPort,
   type SenderDirectoryPort,
   type SignUsageRecorderPort,
@@ -31,6 +32,8 @@ import {
 } from '@aramo/sign';
 
 import { SIGN_SMS_DELIVERY_FEATURE, SIGN_WHATSAPP_DELIVERY_FEATURE, SignFeatureGate } from '../sign-feature.gate.js';
+
+import { SmsConsentFacts } from './sms-consent-rules.js';
 
 // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.7 SMS delivery / §1.8 WhatsApp
 // delivery (Amendment A1: dark, configured off). The policy in front of the vendor port:
@@ -50,6 +53,17 @@ import { SIGN_SMS_DELIVERY_FEATURE, SIGN_WHATSAPP_DELIVERY_FEATURE, SignFeatureG
 // chain. A sent message reports one usage record (SIGN_USAGE_RECORDER_PORT, when bound).
 // Nothing here ever throws into the send / reminder flow, and the signing link and the
 // full number are never logged or stored outside SignRecipientMessaging.
+//
+// SMS-CONSENT-1 (LOCKED 2026-11-28), when the consent facts are bound:
+//   R-2  a signing-link text goes out only while the organization is certified, unless it goes
+//        to the signer's own consented number (R-5);
+//   R-5  an SMS to a signer (link or code) goes to the verified number of the Aramo user whose
+//        email is the signer's email when that user's consent is active; otherwise to the
+//        sender-typed number. The sender is never told: every sender-visible record (delivery
+//        row phone_masked, ledger payload) shows the sender-typed number's mask; only the
+//        delivery row's lookup hash is the destination's. Opt-outs are checked on the destination;
+//   R-3  STOP (inbound keyword or the provider's opt-out list) also revokes the user consent on
+//        that number.
 
 export const SIGN_MESSAGING_ENV = 'SIGN_MESSAGING_ENV';
 
@@ -75,6 +89,8 @@ export class SignMessagingService implements SignerLinkMessagingPort {
     @Optional() @Inject(SIGN_USAGE_RECORDER_PORT) private readonly usage?: SignUsageRecorderPort,
     // Tests only: the quiet-hours / rate-limit settings. Production reads process.env.
     @Optional() @Inject(SIGN_MESSAGING_ENV) env?: NodeJS.ProcessEnv,
+    // SMS-CONSENT-1 — certification, consented numbers and STOP revocation (absent ⇒ today's behaviour).
+    @Optional() private readonly consent?: SmsConsentFacts,
   ) {
     this.features = features ?? new SignFeatureGate();
     this.env = env ?? process.env;
@@ -97,8 +113,15 @@ export class SignMessagingService implements SignerLinkMessagingPort {
       const channel = setting.delivery_channel;
       if (channel !== 'SMS' && channel !== 'WHATSAPP') return;
       if (!this.channelAvailable(channel)) return;
+      let to_e164 = setting.phone_e164;
+      if (channel === 'SMS' && this.consent !== undefined) {
+        // R-5 the signer's own consented number first; R-2 else only while the organization is certified.
+        const own = await this.consent.consentedNumberOfSigner(message.tenant_id, message.signer_id);
+        if (own !== null) to_e164 = own;
+        else if (!(await this.consent.organizationCertified(message.tenant_id))) return;
+      }
       const now = new Date();
-      const zones = recipientTimeZones(setting.phone_e164, setting.timezone, this.env);
+      const zones = recipientTimeZones(to_e164, setting.timezone, this.env);
       await this.send(
         {
           tenant_id: message.tenant_id,
@@ -106,7 +129,8 @@ export class SignMessagingService implements SignerLinkMessagingPort {
           signer_id: message.signer_id,
           channel,
           purpose: message.purpose,
-          to_e164: setting.phone_e164,
+          to_e164,
+          shown_e164: setting.phone_e164,
           signing_url: message.signing_url,
           quiet: isQuietHours(now, zones, quietHoursFromEnv(this.env)),
         },
@@ -120,9 +144,11 @@ export class SignMessagingService implements SignerLinkMessagingPort {
   /**
    * The SMS carrying a one-time code (§1.9). Quiet hours do not apply (the recipient asked
    * for it now); the opt-out list and the tenant limits do. No ledger event here — the
-   * caller appends RECIPIENT_OTP_SENT. Never throws.
+   * caller appends RECIPIENT_OTP_SENT. Never throws. SMS-CONSENT-1 R-6 — the signer code text
+   * (ends with STOP). `shown_e164` is the sender-typed number when the code goes to the signer's
+   * own consented number (R-5): the delivery row then shows that number's mask.
    */
-  async sendOneTimeCode(input: { tenant_id: string; envelope_id: string; signer_id: string; to_e164: string; code: string; ttl_minutes: number }): Promise<SendOutcome> {
+  async sendOneTimeCode(input: { tenant_id: string; envelope_id: string; signer_id: string; to_e164: string; shown_e164?: string; code: string; ttl_minutes: number }): Promise<SendOutcome> {
     return this.send(
       {
         tenant_id: input.tenant_id,
@@ -130,7 +156,9 @@ export class SignMessagingService implements SignerLinkMessagingPort {
         signer_id: input.signer_id,
         channel: 'SMS',
         purpose: 'OTP',
+        variant: 'SIGNER_CODE',
         to_e164: input.to_e164,
+        ...(input.shown_e164 !== undefined ? { shown_e164: input.shown_e164 } : {}),
         code: input.code,
         ttl_minutes: input.ttl_minutes,
         quiet: false,
@@ -146,7 +174,10 @@ export class SignMessagingService implements SignerLinkMessagingPort {
       signer_id: string;
       channel: MessagingChannel;
       purpose: MessagePurpose;
+      variant?: OutboundMessageVariant;
       to_e164: string;
+      /** The number the sender sees (SMS-CONSENT-1 R-5); defaults to to_e164. */
+      shown_e164?: string;
       signing_url?: string;
       code?: string;
       ttl_minutes?: number;
@@ -155,7 +186,7 @@ export class SignMessagingService implements SignerLinkMessagingPort {
     now: Date,
   ): Promise<SendOutcome> {
     const hash = phoneHash(m.to_e164);
-    const masked = maskPhone(m.to_e164);
+    const masked = maskPhone(m.shown_e164 ?? m.to_e164);
     const ledgered = m.purpose !== 'OTP';
     const base = { tenant_id: m.tenant_id, envelope_id: m.envelope_id, signer_id: m.signer_id, channel: m.channel, purpose: m.purpose, phone_hash: hash, phone_masked: masked };
     const eventPayload = { channel: m.channel, purpose: m.purpose, phone: masked };
@@ -178,6 +209,7 @@ export class SignMessagingService implements SignerLinkMessagingPort {
     const result = await this.outbound.send({
       channel: m.channel,
       purpose: m.purpose,
+      ...(m.variant !== undefined ? { variant: m.variant } : {}),
       to_e164: m.to_e164,
       reference: id,
       variables: {
@@ -190,6 +222,7 @@ export class SignMessagingService implements SignerLinkMessagingPort {
 
     if (result.outcome === 'opted_out') {
       await this.repo.setOptOut(hash, m.channel, true, 'PROVIDER', now);
+      if (m.channel === 'SMS') await this.consent?.revokeByPhone(m.to_e164, now);
       const r = await this.repo.recordDelivery(
         { ...base, id, status: 'SUPPRESSED', suppressed_reason: 'opted_out', provider: result.provider },
         ledgered ? { event_type: SIGNER_MESSAGE_SUPPRESSED_EVENT, actor_type: 'SYSTEM', payload: { ...eventPayload, reason: 'opted_out' } } : null,
@@ -235,6 +268,8 @@ export class SignMessagingService implements SignerLinkMessagingPort {
   async inboundMessage(channel: MessagingChannel, from_e164: string, text: unknown, now: Date = new Date()): Promise<InboundKeyword | null> {
     const keyword = parseInboundKeyword(text);
     if (keyword === 'OPT_OUT') await this.repo.setOptOut(phoneHash(from_e164), channel, true, 'INBOUND_KEYWORD', now);
+    // SMS-CONSENT-1 R-3 — STOP also revokes a user's consent on that number (START never restores it).
+    if (keyword === 'OPT_OUT' && channel === 'SMS') await this.consent?.revokeByPhone(from_e164, now);
     if (keyword === 'OPT_IN') await this.repo.setOptOut(phoneHash(from_e164), channel, false, 'INBOUND_KEYWORD', now);
     return keyword;
   }

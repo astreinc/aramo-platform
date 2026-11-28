@@ -5466,6 +5466,263 @@ paths:
           $ref: '#/components/responses/SenderForbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  # SMS-CONSENT-1 (LOCKED 2026-11-28) — consent for texts to signers. DARK (R-8): available is false
+  # while sign.sms_delivery and sign.sms_otp are NOT_AVAILABLE or no SMS provider is configured.
+  /v1/sign/sender/sms-certification:
+    get:
+      operationId: getSmsCertification
+      summary: The organization's certification that it obtains consent before texting signers.
+      description: >
+        SMS-CONSENT-1 R-2. Requires sign:envelope:read. wording and wording_version are the current
+        certification wording (the one copy in @aramo/sign-client). available — an SMS provider can send
+        and sign.sms_delivery or sign.sms_otp is AVAILABLE (false in this release). required — available and
+        the plan includes a text feature (R-4: Business plans; an explicit plan setting wins), so the
+        certification would turn signer texts on. certified — the latest certification is not withdrawn and
+        was given under the current wording version; certified_at and certified_by_name are set only then.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SmsCertification'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+    post:
+      operationId: certifySmsConsent
+      summary: Certify, on behalf of the organization, that recipients' consent is obtained before texting them.
+      description: >
+        SMS-CONSENT-1 R-2. Requires sign:settings:manage (organization owner / admin). Recorded with who and
+        when; append-only (a current certification under the same wording is kept). Refusals (details.reason):
+        sms_not_available (403 ESIGN_FEATURE_NOT_AVAILABLE, dark), sms_not_in_plan (403, not a Business plan),
+        sms_wording_outdated (400, wording_version is not the current one; details.wording_version names it).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [wording_version]
+              properties:
+                wording_version:
+                  type: string
+                  description: The wording_version the person read (from GET).
+      responses:
+        '200':
+          description: Certified.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SmsCertification'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+    delete:
+      operationId: withdrawSmsCertification
+      summary: Withdraw the organization's certification (signer texts turn off).
+      description: SMS-CONSENT-1 R-2. Requires sign:settings:manage. Always accepted; the withdrawal is recorded with who and when.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: Withdrawn.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SmsCertification'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/me/sms-consent:
+    get:
+      operationId: getUserSmsConsent
+      summary: The signed-in user's own mobile number and their consent to texts.
+      description: >
+        SMS-CONSENT-1 R-3. Session (sign consumer) only, keyed by the token's user (per person, not per
+        organization). available as for the organization certification (false in this release). consented —
+        the number is verified and the consent was given under the current wording version and not revoked
+        (Settings or STOP). wording / wording_version are the current consent wording (@aramo/sign-client).
+        When a person with active consent is a signer, texts to them go to this number (R-5); the sender is
+        never told.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSmsConsent'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+    put:
+      operationId: setUserSmsConsent
+      summary: Give (or turn off) the consent to texts on the verified number.
+      description: >
+        SMS-CONSENT-1 R-3. consented true needs a verified number (409 sms_phone_not_verified), the current
+        wording_version (400 sms_wording_outdated) and a channel WEB | APP | SIGNUP (400 sms_channel_invalid);
+        403 sms_not_available while dark. consented false turns the consent off (always accepted; the number
+        stays). 400 sms_consent_invalid when consented is not a boolean.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [consented]
+              properties:
+                consented:
+                  type: boolean
+                wording_version:
+                  type: string
+                channel:
+                  type: string
+                  enum: [WEB, APP, SIGNUP]
+      responses:
+        '200':
+          description: The consent now.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSmsConsent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      operationId: removeUserSmsConsent
+      summary: Remove the number, the consent and every pending code.
+      description: SMS-CONSENT-1 R-3. Always accepted.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: Removed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSmsConsent'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/me/sms-consent/phone:
+    post:
+      operationId: sendUserSmsConsentCode
+      summary: Put a mobile number on file and text it a 6-digit code.
+      description: >
+        SMS-CONSENT-1 R-3. Texts a code (valid 10 minutes; a new code after 60 seconds, at most 5 a day) with
+        the signer code text (ends "Reply STOP to opt out."). A different number than the one on file starts
+        unverified and without consent. The code is never returned. Refusals (details.reason): sms_not_available
+        (403), sms_phone_invalid, sms_phone_not_supported (no provider for the number), sms_phone_opted_out
+        (400), sms_code_rate_limited (429, retry_after_seconds), sms_code_not_sent (503).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone_e164]
+              properties:
+                phone_e164:
+                  type: string
+                  pattern: '^\+[1-9][0-9]{7,14}$'
+      responses:
+        '200':
+          description: The code was texted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSmsCodeSent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '429':
+          description: details.reason sms_code_rate_limited (retry_after_seconds, retry_at inside the 60 s gap).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: The SMS provider did not take the text (details.reason sms_code_not_sent).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/me/sms-consent/verify:
+    post:
+      operationId: verifyUserSmsConsentCode
+      summary: Check the texted code; a correct code verifies the number on file.
+      description: >
+        SMS-CONSENT-1 R-3. details.reason: sms_code_not_requested, sms_code_invalid (attempts_remaining),
+        sms_code_expired, sms_code_attempts_exceeded (400), sms_code_retry (409), sms_not_available (403).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  pattern: '^[0-9]{6}$'
+      responses:
+        '200':
+          description: The number is verified.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSmsConsent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /v1/sign/me/privacy-requests:
     get:
       operationId: listMyPrivacyRequests
@@ -8224,6 +8481,11 @@ paths:
         either is set (400 invalid_phone); timezone is an optional IANA zone for quiet hours (400 invalid_timezone). A
         feature that is NOT_AVAILABLE is refused with 403 ESIGN_FEATURE_NOT_AVAILABLE; no provider for the number is 503
         messaging_provider_not_configured. delivery_channel null with sms_otp_required false clears the choice.
+        SMS-CONSENT-1 — SMS delivery and the SMS code need a plan that includes them (403 ESIGN_FEATURE_NOT_AVAILABLE
+        details.reason sms_not_in_plan) and the organization's certification (403 details.reason
+        sms_consent_not_certified), checked after the launch refusal. When the signer's email belongs to an Aramo
+        user with active text consent, texts go to that user's verified number; the response and every delivery
+        record keep the number entered here.
       tags: [sender]
       security:
         - senderSession: []
@@ -10182,6 +10444,66 @@ components:
           type: integer
         resend_after_seconds:
           type: integer
+    # SMS-CONSENT-1 (LOCKED 2026-11-28) — consent for texts to signers.
+    SmsCertification:
+      type: object
+      required: [available, required, certified, certified_at, certified_by_name, wording_version, wording]
+      properties:
+        available:
+          type: boolean
+          description: An SMS provider can send and sign.sms_delivery or sign.sms_otp is AVAILABLE (false in this release).
+        required:
+          type: boolean
+          description: available and the plan includes a text feature, so a certification would turn signer texts on.
+        certified:
+          type: boolean
+          description: The latest certification is not withdrawn and was given under the current wording version.
+        certified_at:
+          type: [string, 'null']
+          format: date-time
+        certified_by_name:
+          type: [string, 'null']
+          description: The display name of the person who certified (null when not certified or no name is recorded).
+        wording_version:
+          type: string
+          example: '2026-11-28'
+        wording:
+          type: string
+    UserSmsConsent:
+      type: object
+      required: [available, phone_masked, phone_verified, consented, consented_at, wording_version, wording]
+      properties:
+        available:
+          type: boolean
+        phone_masked:
+          type: [string, 'null']
+          description: The number on file, masked (+1••••••••23), or null.
+        phone_verified:
+          type: boolean
+        consented:
+          type: boolean
+          description: Verified number, consent under the current wording version, not revoked (Settings or STOP).
+        consented_at:
+          type: [string, 'null']
+          format: date-time
+        wording_version:
+          type: string
+          example: '2026-11-28'
+        wording:
+          type: string
+    UserSmsCodeSent:
+      type: object
+      required: [sent, phone_masked, expires_in_seconds, resend_after_seconds]
+      properties:
+        sent:
+          type: boolean
+          enum: [true]
+        phone_masked:
+          type: string
+        expires_in_seconds:
+          type: integer
+        resend_after_seconds:
+          type: integer
     SignPrivacyRequest:
       type: object
       description: Aramo-Sign-Mobile-Amendment-M-A7 §3.1 — a privacy request as its requester sees it.
@@ -10339,13 +10661,17 @@ components:
               description: Feature-Parity §1.9 — sign.access_code (per-recipient access code, every plan) is available.
             sms_delivery:
               type: boolean
-              description: Consolidated Directive v1.0 B2 — sign.sms_delivery is available (the signing link also goes by SMS; launch availability only, no plan rule).
+              description: >-
+                SMS-CONSENT-1 — sign.sms_delivery is available AND the plan includes it (Business on, Personal off;
+                an explicit plan setting wins) AND the organization is certified (the signing link also goes by SMS).
             whatsapp_delivery:
               type: boolean
               description: Consolidated Directive v1.0 B2 — sign.whatsapp_delivery is available (the signing link also goes by WhatsApp; launch availability only, no plan rule).
             sms_otp:
               type: boolean
-              description: Consolidated Directive v1.0 B2 — sign.sms_otp is available (the recipient enters an SMS code before acting; launch availability only, no plan rule).
+              description: >-
+                SMS-CONSENT-1 — sign.sms_otp is available AND the plan includes it AND the organization is certified
+                (the recipient enters an SMS code before acting).
             email_otp:
               type: boolean
               description: SIGN-FREE-PARITY-1 S3 — sign.email_otp is available (the recipient enters a code sent to their email before acting; every plan, launch availability only).
@@ -10417,6 +10743,19 @@ components:
             storage action. Absent on an older backend (read as empty).
           items:
             $ref: '#/components/schemas/CloudStorageProvider'
+        sms_certification:
+          type: object
+          description: >-
+            SMS-CONSENT-1 R-2 — required: a text feature is launched and in the plan, so the organization's
+            certification would turn it on (the send flow then shows "An administrator must confirm SMS consent
+            in Settings before texts can be sent." instead of the options); certified: the organization has a
+            current certification. Both false while no text feature is launched. Absent on an older backend.
+          required: [required, certified]
+          properties:
+            required:
+              type: boolean
+            certified:
+              type: boolean
     # SIGN-FREE-PARITY-1 S6 (FP-R7) — cloud storage import and export.
     CloudStorageProvider:
       type: string

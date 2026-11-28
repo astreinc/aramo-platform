@@ -112,6 +112,7 @@
     "apps/sign-service/src/app/sender/esign-sender-templates.controller.ts": "AP",
     "apps/sign-service/src/app/sender/esign-sender-template-studio.controller.ts": "AP",
     "apps/sign-service/src/app/messaging/sign-messaging.controller.ts": "AP",
+    "apps/sign-service/src/app/messaging/sms-consent.controller.ts": "AP",
     "apps/sign-service/src/app/regulated/esign-sender-regulated.controller.ts": "AP",
     "apps/sign-service/src/app/regulated/esign-signer-qes.controller.ts": "SS",
     "apps/sign-service/src/app/sender/esign-sender-reports.controller.ts": "AP",

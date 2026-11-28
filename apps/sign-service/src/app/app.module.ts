@@ -16,6 +16,7 @@ import {
   OUTBOUND_MESSAGING_PORT,
   SIGNER_LINK_MESSAGING_PORT,
   SignMessagingRepository,
+  SignSmsConsentRepository,
   OutboxDeliveryService,
   OutboxService,
   SENDER_DIRECTORY_PORT,
@@ -190,6 +191,12 @@ import { SignMessagingService } from './messaging/sign-messaging.service.js';
 import { RecipientOtpService } from './messaging/recipient-otp.service.js';
 import { SenderMessagingService } from './messaging/sender-messaging.service.js';
 import { SignWhatsappPlanGate } from './messaging/whatsapp-plan.gate.js';
+import { SignSmsPlanGate } from './messaging/sms-plan.gate.js';
+import { SmsConsentFacts } from './messaging/sms-consent-rules.js';
+import { SignSmsPolicy } from './messaging/sms-policy.service.js';
+import { SmsCertificationService } from './messaging/sms-certification.service.js';
+import { UserSmsConsentService } from './messaging/user-sms-consent.service.js';
+import { SignSmsCertificationController, SignUserSmsConsentController } from './messaging/sms-consent.controller.js';
 import { SignRecipientVerificationController, SignSenderMessagingController, SignSmsInboundWebhookController, SignWhatsAppWebhookController } from './messaging/sign-messaging.controller.js';
 // Aramo Sign 1.14 — payment collection through Stripe Connect (dark until enabled).
 import { SignPaymentService } from './payments/sign-payment.service.js';
@@ -245,7 +252,7 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
       // (an AppModule provider) @Optional-injects it, and while it was unexported the
       // notifier resolved to undefined — envelopes went SENT but the signer
       // invitation email was silently never sent (prod RTR, 2026-10-16).
-      extraExports: [DOCUMENT_SOURCE_PROVIDER_PORT, SIGNING_NOTIFICATION_PORT, DOCUMENT_STORAGE_PORT, ENVELOPE_NOTIFICATION_SERVICE, SignPurgeRepository, SignPurgeService, SignBrandingRepository, SignBrandingService, SignMessagingRepository, SignMessagingService, SIGNER_LINK_MESSAGING_PORT, IdentityVerificationService, OUTBOUND_MESSAGING_PORT],
+      extraExports: [DOCUMENT_SOURCE_PROVIDER_PORT, SIGNING_NOTIFICATION_PORT, DOCUMENT_STORAGE_PORT, ENVELOPE_NOTIFICATION_SERVICE, SignPurgeRepository, SignPurgeService, SignBrandingRepository, SignBrandingService, SignMessagingRepository, SignMessagingService, SIGNER_LINK_MESSAGING_PORT, IdentityVerificationService, OUTBOUND_MESSAGING_PORT, SignSmsConsentRepository, SmsConsentFacts],
       evidenceSigner: {
         provide: EVIDENCE_MANIFEST_SIGNER_PORT,
         // SX-1 item 4 — production refuses to boot without an asymmetric KMS
@@ -315,6 +322,10 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
         // (sequential next-signer invitations) also reaches SIGNER_LINK_MESSAGING_PORT.
         SignFeatureGate,
         SignMessagingRepository,
+        // SMS-CONSENT-1 — the certification / user consent store and the facts the SMS paths read
+        // (inside the module: SignMessagingService texts links and codes from here).
+        SignSmsConsentRepository,
+        SmsConsentFacts,
         { provide: OUTBOUND_MESSAGING_PORT, useFactory: () => outboundMessagingFromEnv(process.env) },
         SignMessagingService,
         { provide: SIGNER_LINK_MESSAGING_PORT, useExisting: SignMessagingService },
@@ -339,7 +350,7 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignSenderTemplateStudioController, EsignSenderReportsController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignFoldersController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeSigningStatsController, SignMeNotificationsController, SignAppleRevokeController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignSmsInboundWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController, EsignSenderRegulatedController, EsignSignerQesController, SenderPhoneStepUpController, SignCloudStorageController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignSenderTemplateStudioController, EsignSenderReportsController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignFoldersController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeSigningStatsController, SignMeNotificationsController, SignAppleRevokeController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignSmsInboundWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController, EsignSenderRegulatedController, EsignSignerQesController, SenderPhoneStepUpController, SignCloudStorageController, SignSmsCertificationController, SignUserSmsConsentController],
   providers: [
     NativeAramoSignatureProvider,
     // SIGN-FREE-PARITY-1 S4 — the automatic reminder sweep (needs the provider's dispatch). Off by default.
@@ -384,6 +395,12 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
     { provide: SIGN_PLAN_FEATURE_READER, useClass: SubscriptionPlanFeatureReader },
     // SIGN-FREE-PARITY-1 S5 — WhatsApp is a per-plan feature.
     SignWhatsappPlanGate,
+    // SMS-CONSENT-1 — signer SMS per plan (R-4), the one SMS rule, the organization certification
+    // (v1/sign/sender/sms-certification) and the user's own consent (v1/sign/me/sms-consent). DARK.
+    SignSmsPlanGate,
+    SignSmsPolicy,
+    SmsCertificationService,
+    UserSmsConsentService,
     // Feature-Parity §1.13 — organization reports (dark behind sign.reports).
     SenderReportsService,
     // Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED — the Personal sending

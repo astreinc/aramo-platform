@@ -2539,6 +2539,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/sender/sms-certification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The organization's certification that it obtains consent before texting signers.
+         * @description SMS-CONSENT-1 R-2. Requires sign:envelope:read. wording and wording_version are the current certification wording (the one copy in @aramo/sign-client). available — an SMS provider can send and sign.sms_delivery or sign.sms_otp is AVAILABLE (false in this release). required — available and the plan includes a text feature (R-4: Business plans; an explicit plan setting wins), so the certification would turn signer texts on. certified — the latest certification is not withdrawn and was given under the current wording version; certified_at and certified_by_name are set only then.
+         */
+        get: operations["getSmsCertification"];
+        put?: never;
+        /**
+         * Certify, on behalf of the organization, that recipients' consent is obtained before texting them.
+         * @description SMS-CONSENT-1 R-2. Requires sign:settings:manage (organization owner / admin). Recorded with who and when; append-only (a current certification under the same wording is kept). Refusals (details.reason): sms_not_available (403 ESIGN_FEATURE_NOT_AVAILABLE, dark), sms_not_in_plan (403, not a Business plan), sms_wording_outdated (400, wording_version is not the current one; details.wording_version names it).
+         */
+        post: operations["certifySmsConsent"];
+        /**
+         * Withdraw the organization's certification (signer texts turn off).
+         * @description SMS-CONSENT-1 R-2. Requires sign:settings:manage. Always accepted; the withdrawal is recorded with who and when.
+         */
+        delete: operations["withdrawSmsCertification"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/me/sms-consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in user's own mobile number and their consent to texts.
+         * @description SMS-CONSENT-1 R-3. Session (sign consumer) only, keyed by the token's user (per person, not per organization). available as for the organization certification (false in this release). consented — the number is verified and the consent was given under the current wording version and not revoked (Settings or STOP). wording / wording_version are the current consent wording (@aramo/sign-client). When a person with active consent is a signer, texts to them go to this number (R-5); the sender is never told.
+         */
+        get: operations["getUserSmsConsent"];
+        /**
+         * Give (or turn off) the consent to texts on the verified number.
+         * @description SMS-CONSENT-1 R-3. consented true needs a verified number (409 sms_phone_not_verified), the current wording_version (400 sms_wording_outdated) and a channel WEB | APP | SIGNUP (400 sms_channel_invalid); 403 sms_not_available while dark. consented false turns the consent off (always accepted; the number stays). 400 sms_consent_invalid when consented is not a boolean.
+         */
+        put: operations["setUserSmsConsent"];
+        post?: never;
+        /**
+         * Remove the number, the consent and every pending code.
+         * @description SMS-CONSENT-1 R-3. Always accepted.
+         */
+        delete: operations["removeUserSmsConsent"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/me/sms-consent/phone": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Put a mobile number on file and text it a 6-digit code.
+         * @description SMS-CONSENT-1 R-3. Texts a code (valid 10 minutes; a new code after 60 seconds, at most 5 a day) with the signer code text (ends "Reply STOP to opt out."). A different number than the one on file starts unverified and without consent. The code is never returned. Refusals (details.reason): sms_not_available (403), sms_phone_invalid, sms_phone_not_supported (no provider for the number), sms_phone_opted_out (400), sms_code_rate_limited (429, retry_after_seconds), sms_code_not_sent (503).
+         */
+        post: operations["sendUserSmsConsentCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/me/sms-consent/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check the texted code; a correct code verifies the number on file.
+         * @description SMS-CONSENT-1 R-3. details.reason: sms_code_not_requested, sms_code_invalid (attempts_remaining), sms_code_expired, sms_code_attempts_exceeded (400), sms_code_retry (409), sms_not_available (403).
+         */
+        post: operations["verifyUserSmsConsentCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/me/privacy-requests": {
         parameters: {
             query?: never;
@@ -3866,7 +3962,7 @@ export interface paths {
         get?: never;
         /**
          * Set a recipient's text delivery channel and / or SMS one-time code.
-         * @description Feature-Parity §1.7–§1.9. DRAFT only (409 envelope_not_draft), sign:envelope:create and the right to change the envelope. For a SIGNER who receives a link (400 recipient_kind_not_supported otherwise): delivery_channel SMS | WHATSAPP sends the signing link to the phone as well as by email (sign.sms_delivery / sign.whatsapp_delivery); sms_otp_required makes the recipient enter an SMS code before acting (sign.sms_otp). phone_e164 is required when either is set (400 invalid_phone); timezone is an optional IANA zone for quiet hours (400 invalid_timezone). A feature that is NOT_AVAILABLE is refused with 403 ESIGN_FEATURE_NOT_AVAILABLE; no provider for the number is 503 messaging_provider_not_configured. delivery_channel null with sms_otp_required false clears the choice.
+         * @description Feature-Parity §1.7–§1.9. DRAFT only (409 envelope_not_draft), sign:envelope:create and the right to change the envelope. For a SIGNER who receives a link (400 recipient_kind_not_supported otherwise): delivery_channel SMS | WHATSAPP sends the signing link to the phone as well as by email (sign.sms_delivery / sign.whatsapp_delivery); sms_otp_required makes the recipient enter an SMS code before acting (sign.sms_otp). phone_e164 is required when either is set (400 invalid_phone); timezone is an optional IANA zone for quiet hours (400 invalid_timezone). A feature that is NOT_AVAILABLE is refused with 403 ESIGN_FEATURE_NOT_AVAILABLE; no provider for the number is 503 messaging_provider_not_configured. delivery_channel null with sms_otp_required false clears the choice. SMS-CONSENT-1 — SMS delivery and the SMS code need a plan that includes them (403 ESIGN_FEATURE_NOT_AVAILABLE details.reason sms_not_in_plan) and the organization's certification (403 details.reason sms_consent_not_certified), checked after the launch refusal. When the signer's email belongs to an Aramo user with active text consent, texts go to that user's verified number; the response and every delivery record keep the number entered here.
          */
         put: operations["setRecipientMessaging"];
         post?: never;
@@ -4713,6 +4809,41 @@ export interface components {
             expires_in_seconds: number;
             resend_after_seconds: number;
         };
+        SmsCertification: {
+            /** @description An SMS provider can send and sign.sms_delivery or sign.sms_otp is AVAILABLE (false in this release). */
+            available: boolean;
+            /** @description available and the plan includes a text feature, so a certification would turn signer texts on. */
+            required: boolean;
+            /** @description The latest certification is not withdrawn and was given under the current wording version. */
+            certified: boolean;
+            /** Format: date-time */
+            certified_at: string | null;
+            /** @description The display name of the person who certified (null when not certified or no name is recorded). */
+            certified_by_name: string | null;
+            /** @example 2026-11-28 */
+            wording_version: string;
+            wording: string;
+        };
+        UserSmsConsent: {
+            available: boolean;
+            /** @description The number on file, masked (+1••••••••23), or null. */
+            phone_masked: string | null;
+            phone_verified: boolean;
+            /** @description Verified number, consent under the current wording version, not revoked (Settings or STOP). */
+            consented: boolean;
+            /** Format: date-time */
+            consented_at: string | null;
+            /** @example 2026-11-28 */
+            wording_version: string;
+            wording: string;
+        };
+        UserSmsCodeSent: {
+            /** @enum {boolean} */
+            sent: true;
+            phone_masked: string;
+            expires_in_seconds: number;
+            resend_after_seconds: number;
+        };
         /** @description Aramo-Sign-Mobile-Amendment-M-A7 §3.1 — a privacy request as its requester sees it. */
         SignPrivacyRequest: {
             /** @example PR-7K3M-9QX2-H4TD */
@@ -4803,11 +4934,11 @@ export interface components {
                 delegate_signing?: boolean;
                 /** @description Feature-Parity §1.9 — sign.access_code (per-recipient access code, every plan) is available. */
                 access_code?: boolean;
-                /** @description Consolidated Directive v1.0 B2 — sign.sms_delivery is available (the signing link also goes by SMS; launch availability only, no plan rule). */
+                /** @description SMS-CONSENT-1 — sign.sms_delivery is available AND the plan includes it (Business on, Personal off; an explicit plan setting wins) AND the organization is certified (the signing link also goes by SMS). */
                 sms_delivery?: boolean;
                 /** @description Consolidated Directive v1.0 B2 — sign.whatsapp_delivery is available (the signing link also goes by WhatsApp; launch availability only, no plan rule). */
                 whatsapp_delivery?: boolean;
-                /** @description Consolidated Directive v1.0 B2 — sign.sms_otp is available (the recipient enters an SMS code before acting; launch availability only, no plan rule). */
+                /** @description SMS-CONSENT-1 — sign.sms_otp is available AND the plan includes it AND the organization is certified (the recipient enters an SMS code before acting). */
                 sms_otp?: boolean;
                 /** @description SIGN-FREE-PARITY-1 S3 — sign.email_otp is available (the recipient enters a code sent to their email before acting; every plan, launch availability only). */
                 email_otp?: boolean;
@@ -4846,6 +4977,11 @@ export interface components {
             word_conversion_enabled?: boolean;
             /** @description SIGN-FREE-PARITY-1 S6 (FP-R7) — the cloud storage providers offered for import and export (every plan): launch key sign.cloud_<provider> AVAILABLE, the provider's OAuth app configured and SIGN_CLOUD_TOKEN_KEY set. Empty while dark; the apps then show no cloud storage action. Absent on an older backend (read as empty). */
             cloud_storage?: components["schemas"]["CloudStorageProvider"][];
+            /** @description SMS-CONSENT-1 R-2 — required: a text feature is launched and in the plan, so the organization's certification would turn it on (the send flow then shows "An administrator must confirm SMS consent in Settings before texts can be sent." instead of the options); certified: the organization has a current certification. Both false while no text feature is launched. Absent on an older backend. */
+            sms_certification?: {
+                required: boolean;
+                certified: boolean;
+            };
         };
         /** @enum {string} */
         CloudStorageProvider: "google_drive" | "onedrive" | "dropbox" | "box";
@@ -11050,6 +11186,234 @@ export interface operations {
             401: components["responses"]["SenderUnauthorized"];
             403: components["responses"]["SenderForbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getSmsCertification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmsCertification"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    certifySmsConsent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The wording_version the person read (from GET). */
+                    wording_version: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Certified. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmsCertification"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    withdrawSmsCertification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Withdrawn. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmsCertification"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    getUserSmsConsent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserSmsConsent"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    setUserSmsConsent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    consented: boolean;
+                    wording_version?: string;
+                    /** @enum {string} */
+                    channel?: "WEB" | "APP" | "SIGNUP";
+                };
+            };
+        };
+        responses: {
+            /** @description The consent now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserSmsConsent"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    removeUserSmsConsent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserSmsConsent"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    sendUserSmsConsentCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    phone_e164: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The code was texted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserSmsCodeSent"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            /** @description details.reason sms_code_rate_limited (retry_after_seconds, retry_at inside the 60 s gap). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The SMS provider did not take the text (details.reason sms_code_not_sent). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    verifyUserSmsConsentCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The number is verified. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserSmsConsent"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            409: components["responses"]["Conflict"];
         };
     };
     listMyPrivacyRequests: {

@@ -9,6 +9,7 @@ import { SenderEnvelopeService } from '../sender/sender-envelope.service.js';
 
 import { SignMessagingService } from './sign-messaging.service.js';
 import { SignWhatsappPlanGate } from './whatsapp-plan.gate.js';
+import { SignSmsPolicy } from './sms-policy.service.js';
 
 // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.7 / §1.8 / §1.9 — the sender's
 // per-recipient messaging choice (Amendment A1: dark). In a DRAFT the sender chooses, for a
@@ -22,6 +23,11 @@ import { SignWhatsappPlanGate } from './whatsapp-plan.gate.js';
 // Each choice is refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while its feature is
 // NOT_AVAILABLE, and with 503 messaging_provider_not_configured when no provider can reach
 // the number. Clearing both removes the row. Same authority as every draft write.
+//
+// SMS-CONSENT-1 (LOCKED 2026-11-28) — SMS delivery and the SMS code are offered only on a plan
+// that includes them (R-4: Business) and once the organization certified consent (R-2): a write
+// is refused with 403 ESIGN_FEATURE_NOT_AVAILABLE details.reason sms_not_in_plan /
+// sms_consent_not_certified (after the launch refusal). The GET's features say the same.
 
 export interface RecipientMessagingBody {
   delivery_channel?: unknown;
@@ -44,12 +50,20 @@ export class SenderMessagingService {
     private readonly features: SignFeatureGate,
     // SIGN-FREE-PARITY-1 S5 — the per-plan WhatsApp entitlement (absent ⇒ launch availability only).
     @Optional() private readonly whatsappPlan?: SignWhatsappPlanGate,
+    // SMS-CONSENT-1 — plan + certification for the two SMS features (absent ⇒ launch availability only).
+    @Optional() private readonly smsPolicy?: SignSmsPolicy,
   ) {}
 
   /** SIGN-FREE-PARITY-1 S5 — WhatsApp is offered only when launched AND the account's plan includes it. */
-  private async withPlan<T extends { whatsapp_delivery: boolean }>(tenant_id: string, a: T): Promise<T> {
-    if (!a.whatsapp_delivery || this.whatsappPlan === undefined) return a;
-    return { ...a, whatsapp_delivery: await this.whatsappPlan.entitled(tenant_id) };
+  private async withPlan<T extends { whatsapp_delivery: boolean; sms_delivery: boolean; sms_otp: boolean }>(tenant_id: string, a: T): Promise<T> {
+    let out = a;
+    if (a.whatsapp_delivery && this.whatsappPlan !== undefined) out = { ...out, whatsapp_delivery: await this.whatsappPlan.entitled(tenant_id) };
+    // SMS-CONSENT-1 — launched AND in the plan AND the organization certified.
+    if ((a.sms_delivery || a.sms_otp) && this.smsPolicy !== undefined) {
+      const sms = await this.smsPolicy.featureState(tenant_id);
+      out = { ...out, sms_delivery: sms.sms_delivery, sms_otp: sms.sms_otp };
+    }
+    return out;
   }
 
   private availability() {
@@ -142,6 +156,9 @@ export class SenderMessagingService {
       });
     }
     if (otpRaw && !this.features.isAvailable(SIGN_SMS_OTP_FEATURE)) throw notAvailable(SIGN_SMS_OTP_FEATURE);
+    // SMS-CONSENT-1 R-4 / R-2 — in the plan, then certified (403 sms_not_in_plan / sms_consent_not_certified).
+    if (channel === 'SMS') await this.smsPolicy?.assertAllowed(auth.tenant_id, SIGN_SMS_DELIVERY_FEATURE, requestId);
+    if (otpRaw) await this.smsPolicy?.assertAllowed(auth.tenant_id, SIGN_SMS_OTP_FEATURE, requestId);
     const unreachable = (ch: MessagingChannel) =>
       new AramoError('ESIGN_FEATURE_NOT_AVAILABLE', `No ${ch === 'SMS' ? 'SMS' : 'WhatsApp'} provider can reach this number`, 503, {
         requestId,

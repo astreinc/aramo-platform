@@ -2617,6 +2617,7 @@
       "SignPurgeRepository",
       "SignReportRepository",
       "SignSavedSignatureRepository",
+      "SignSmsConsentRepository",
       "SignUserFolderRepository",
       "SignUserProfileRepository",
       "SignWebhookRepository",
@@ -2854,11 +2855,22 @@
       "SIGNER_FIELD_VALUE_COPY",
       "SIGNER_FIELD_VALUE_FALLBACK",
       "SIGNER_NAME_MODES",
+      "SIGNER_SMS_CODE_TEXT",
       "SIGNING_RECIPIENT_KINDS",
       "SIGN_DATE_FALLBACK_TIME_ZONE",
       "SIGN_DATE_FORMATS",
       "SIGN_DATE_PREVIEW_NOTE",
       "SIGN_SUBJECT_PREFIX",
+      "SMS_CERTIFICATION_WORDING",
+      "SMS_CERTIFICATION_WORDING_VERSION",
+      "SMS_CONSENT_CHANNELS",
+      "SMS_CONSENT_COPY",
+      "SMS_CONSENT_NOT_CERTIFIED_REASON",
+      "SMS_CONSENT_REFUSAL_COPY",
+      "SMS_CONSENT_WORDING",
+      "SMS_CONSENT_WORDING_VERSION",
+      "SMS_NOT_CERTIFIED_NOTE",
+      "SMS_NOT_IN_PLAN_REASON",
       "STEP_UP_CODE_LENGTH",
       "STORAGE_CAPACITY_KEY",
       "STORAGE_FULL",
@@ -2949,6 +2961,7 @@
       "isSignerEditorKind",
       "isSignerLocked",
       "isSigningRecipient",
+      "isSmsConsentChannel",
       "isStepUpCode",
       "isSuggestedFieldType",
       "isTerminalEnvelopeStatus",
@@ -3017,10 +3030,12 @@
       "signerFieldUnits",
       "signerInputKind",
       "signerMayStillSign",
+      "signerSmsCodeText",
       "signerUnitMessage",
       "signerValueProblem",
       "signingRecipients",
       "sizeScale",
+      "smsSendOptionsState",
       "storageLabel",
       "subjectDocumentTitle",
       "suggestionReasonText",
@@ -5540,6 +5555,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sms-consent-1.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/storage-quota.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -6320,6 +6341,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-purge-inbox-api.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sms-consent-1.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -9655,6 +9682,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-witness-delegate-access-code.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sms-consent-1.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -13312,6 +13345,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sms-consent-1.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/storage-quota.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -15358,6 +15397,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sms-consent-1.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/webhook-event-publisher.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -15705,6 +15750,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-free-parity-1-folders.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sms-consent-1.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -16345,6 +16396,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-witness-delegate-access-code.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sms-consent-1.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

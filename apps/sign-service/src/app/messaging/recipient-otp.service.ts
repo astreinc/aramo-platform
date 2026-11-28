@@ -32,6 +32,7 @@ import {
 } from '@aramo/sign';
 
 import { SignMessagingService } from './sign-messaging.service.js';
+import { SmsConsentFacts } from './sms-consent-rules.js';
 
 // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 — SMS one-time-code recipient
 // verification (Amendment A1: dark). The sender sets SMS_OTP on a recipient
@@ -55,6 +56,12 @@ import { SignMessagingService } from './sign-messaging.service.js';
 // challenges (method EMAIL_OTP, bound with hashPersonalOtp(id, 'email', code)), the masked
 // address only (j***@example.com). Rule: a recipient who must enter both codes enters the
 // SMS code first, then the email code; the session is verified only when both are.
+//
+// SMS-CONSENT-1 R-5 / R-6 — the SMS code goes to the signer's own consented number when the
+// signer's email belongs to an Aramo user with active consent (else the sender-typed number), with
+// the signer code text (ends with STOP). The signer is shown the number the code goes to; the
+// ledger and the certificate (sender-visible) keep the sender-typed number's mask, so the sender
+// is never told whether such an account or number exists.
 
 export interface OtpStatus {
   required: boolean;
@@ -80,7 +87,10 @@ type Delivered = { ok: true; delivery_id?: string } | { ok: false; status: numbe
 // One required code: where it goes (masked) and how it is delivered.
 interface RequiredCode {
   method: RecipientOtpMethod;
+  /** Shown to the signer: where the code goes. */
   masked: string;
+  /** Written to the ledger (sender-visible): for an SMS code, the sender-typed number's mask. */
+  ledgerMasked: string;
   /** The hashPersonalOtp channel the code hash is bound to. */
   channel: 'phone' | 'email';
   challengeFields: { phone_hash?: string; phone_masked?: string; email_masked?: string };
@@ -95,6 +105,8 @@ export class RecipientOtpService {
     // SIGN-FREE-PARITY-1 S3 — the email code goes out through the signing-notification mailer.
     // Unbound ⇒ an email code cannot be sent (503), never skipped.
     @Optional() @Inject(SIGNING_NOTIFICATION_PORT) private readonly notifier?: SigningNotificationPort,
+    // SMS-CONSENT-1 R-5 — the signer's own consented number (absent ⇒ the sender-typed number).
+    @Optional() private readonly consent?: SmsConsentFacts,
   ) {}
 
   // The codes the sender asked for, in the order the signer enters them: SMS, then email.
@@ -102,14 +114,24 @@ export class RecipientOtpService {
     const [sms, email] = await Promise.all([this.repo.settingFor(ctx.tenant_id, ctx.signer_id), this.repo.emailOtpSetting(ctx.tenant_id, ctx.signer_id)]);
     const out: RequiredCode[] = [];
     if (sms !== null && sms.sms_otp_required && sms.envelope_id === ctx.envelope_id) {
-      const masked = maskPhone(sms.phone_e164);
+      const to = (await this.consent?.consentedNumberOfSigner(ctx.tenant_id, ctx.signer_id)) ?? sms.phone_e164;
+      const shown = maskPhone(sms.phone_e164);
       out.push({
         method: SMS_OTP_METHOD,
-        masked,
+        masked: maskPhone(to),
+        ledgerMasked: shown,
         channel: 'phone',
-        challengeFields: { phone_hash: phoneHash(sms.phone_e164), phone_masked: masked },
+        challengeFields: { phone_hash: phoneHash(to), phone_masked: shown },
         deliver: async (code, ttl_minutes) => {
-          const r = await this.messaging.sendOneTimeCode({ tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id, signer_id: ctx.signer_id, to_e164: sms.phone_e164, code, ttl_minutes });
+          const r = await this.messaging.sendOneTimeCode({
+            tenant_id: ctx.tenant_id,
+            envelope_id: ctx.envelope_id,
+            signer_id: ctx.signer_id,
+            to_e164: to,
+            ...(to !== sms.phone_e164 ? { shown_e164: sms.phone_e164 } : {}),
+            code,
+            ttl_minutes,
+          });
           if (r.status === 'SENT') return { ok: true, delivery_id: r.delivery_id };
           return {
             ok: false,
@@ -125,6 +147,7 @@ export class RecipientOtpService {
       out.push({
         method: EMAIL_OTP_METHOD,
         masked,
+        ledgerMasked: masked,
         channel: 'email',
         challengeFields: { email_masked: masked },
         deliver: async (code, ttl_minutes) => {
@@ -236,7 +259,7 @@ export class RecipientOtpService {
         event_type: RECIPIENT_OTP_SENT_EVENT,
         actor_type: 'SIGNER',
         actor_ref: ctx.signer_id,
-        payload: { method, ...dest, challenge_id: id, ...(out.delivery_id !== undefined ? { delivery_id: out.delivery_id } : {}) },
+        payload: { method, ...(method === EMAIL_OTP_METHOD ? { email: c.ledgerMasked } : { phone: c.ledgerMasked }), challenge_id: id, ...(out.delivery_id !== undefined ? { delivery_id: out.delivery_id } : {}) },
       },
     ]);
     return { sent: true, verified: false, ...dest, expires_at: expires_at.toISOString(), resend_after_seconds: Math.round(PERSONAL_OTP_RESEND_GAP_MS / 1000) };
