@@ -12523,6 +12523,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/SmsConsent.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/UsageCharges.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
@@ -15461,7 +15467,17 @@
         "status": "unscoped"
       },
       {
+        "from": "mobile/sign/src/features/account/TextMessagesSection.tsx",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
         "from": "mobile/sign/src/features/account/billing.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/account/smsConsentCopy.ts",
         "project": "sign-mobile",
         "status": "unscoped"
       },
