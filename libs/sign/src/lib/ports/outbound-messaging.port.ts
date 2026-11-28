@@ -37,7 +37,15 @@ export interface OutboundMessage {
   };
   /** Our delivery id, passed to vendors that echo a reference back in status callbacks. */
   reference: string;
+  /**
+   * SMS-CONSENT-1 R-6 — OTP only: SIGNER_CODE is the code text a signer (or a user verifying their
+   * own number) receives, which ends with "Reply STOP to opt out." Absent = the sender's own
+   * step-up code text, unchanged (SMS-OPTIN-1).
+   */
+  variant?: OutboundMessageVariant;
 }
+
+export type OutboundMessageVariant = 'SIGNER_CODE';
 
 export type OutboundSendResult =
   | { outcome: 'sent'; provider: string; provider_message_id: string | null }

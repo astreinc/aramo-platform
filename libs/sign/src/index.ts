@@ -528,6 +528,7 @@ export {
   type MessagingChannel,
   type MessagePurpose,
   type OutboundMessage,
+  type OutboundMessageVariant,
   type OutboundMessagingPort,
   type OutboundSendResult,
 } from './lib/ports/outbound-messaging.port.js';
@@ -552,6 +553,14 @@ export {
   type RecipientMessagingRow,
   type SuppressedReason,
 } from './lib/messaging/sign-messaging.repository.js';
+// SMS-CONSENT-1 — the organization certification, a user's own number and consent, their codes.
+export {
+  SignSmsConsentRepository,
+  type SmsCertificationRow,
+  type UserSmsConsentRow,
+  type UserSmsCodeRow,
+  type UserSmsCodeStatus,
+} from './lib/messaging/sign-sms-consent.repository.js';
 // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 + Amendment A1 — recipient
 // identity verification (government ID via Stripe Identity; KBA port, disabled). DARK.
 export {

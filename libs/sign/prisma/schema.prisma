@@ -1298,6 +1298,57 @@ model SignRecipientOtpChallenge {
   @@schema("sign")
 }
 
+// SMS-CONSENT-1 (LOCKED 2026-11-28; migration 20261128100000) — R-2 the organization's one-time
+// certification that it obtains each recipient's consent before texting them. Append-only (SQL
+// trigger): never deleted; only withdrawn_at + withdrawn_by_user_id are set, once. The current
+// certification is the latest row not withdrawn (partial unique index: one per tenant).
+model SignSmsCertification {
+  id                   String    @id @db.Uuid
+  tenant_id            String    @db.Uuid
+  certified_by_user_id String    @db.Uuid
+  certified_at         DateTime  @default(now()) @db.Timestamptz
+  wording_version      String
+  withdrawn_at         DateTime? @db.Timestamptz
+  withdrawn_by_user_id String?   @db.Uuid
+
+  @@index([tenant_id, certified_at], map: "SignSmsCertification_tenant_idx")
+  @@schema("sign")
+}
+
+// SMS-CONSENT-1 R-3 — a registered user's own mobile number and their separate consent to texts
+// (per person). consent_channel WEB | APP | SIGNUP (CHECK). Revoked in Settings or by STOP.
+model SignUserSmsConsent {
+  user_id                 String    @id @db.Uuid
+  phone_e164              String
+  phone_verified_at       DateTime? @db.Timestamptz
+  consented_at            DateTime? @db.Timestamptz
+  consent_wording_version String?
+  consent_channel         String?
+  revoked_at              DateTime? @db.Timestamptz
+  created_at              DateTime  @default(now()) @db.Timestamptz
+  updated_at              DateTime  @default(now()) @db.Timestamptz
+
+  @@index([phone_e164], map: "SignUserSmsConsent_phone_idx")
+  @@schema("sign")
+}
+
+// SMS-CONSENT-1 — a code that verifies a user's own number. Only the SHA-256 of the code is kept.
+// status ACTIVE | VERIFIED | EXPIRED | LOCKED | SUPERSEDED (CHECK).
+model SignUserSmsCode {
+  id          String    @id @db.Uuid
+  user_id     String    @db.Uuid
+  phone_hash  String
+  code_hash   String
+  status      String    @default("ACTIVE")
+  attempts    Int       @default(0)
+  expires_at  DateTime  @db.Timestamptz
+  created_at  DateTime  @default(now()) @db.Timestamptz
+  verified_at DateTime? @db.Timestamptz
+
+  @@index([user_id, created_at], map: "SignUserSmsCode_user_idx")
+  @@schema("sign")
+}
+
 // Feature-Parity directive (2bd74ca5) §1.9 + A1 (dc95b283) — one recipient identity-verification
 // attempt (migration 20261102130000). R-5: the outcome only; raw ID images and document data
 // stay at the vendor. CHECKs: method ID_VERIFICATION|KBA; status PENDING|VERIFIED|FAILED|CANCELLED;

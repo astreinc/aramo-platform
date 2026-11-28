@@ -60,7 +60,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
     await container?.stop();
   });
 
-  it('creates the sign schema with its sixty-three tables', async () => {
+  it('creates the sign schema with its sixty-six tables', async () => {
     const r = await db.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'sign'`,
     );
@@ -148,6 +148,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
         // SIGN-FREE-PARITY-1 S6 — connected cloud storage accounts and pending OAuth connects.
         'SignCloudConnection',
         'SignCloudOAuthState',
+        // SMS-CONSENT-1 — the organization certification, a user's own number and consent, its codes.
+        'SignSmsCertification',
+        'SignUserSmsConsent',
+        'SignUserSmsCode',
         // Aramo Sign Mobile M-A13 R-1b — the append-only corrected reissue.
         'ExecutedDocumentReissue',
         'ExecutionCertificateReissue',
@@ -255,5 +259,56 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
     expect(names).toContain('token_hash');
     expect(names).not.toContain('token');
     expect(names).not.toContain('raw_token');
+  });
+
+  // SMS-CONSENT-1 (migration 20261128100000_sign_sms_consent_1).
+  it('SignSmsCertification is append-only: one current row per tenant, withdrawn once, never deleted', async () => {
+    const tenant = randomUUID();
+    const id = randomUUID();
+    const insert = (rowId: string) =>
+      db.query(`INSERT INTO "sign"."SignSmsCertification" (id, tenant_id, certified_by_user_id, wording_version) VALUES ($1,$2,$3,'2026-11-28')`, [rowId, tenant, ACTOR]);
+    await insert(id);
+    // A second current certification for the same tenant violates the partial unique index.
+    await expect(insert(randomUUID())).rejects.toThrow(/unique|duplicate/i);
+    // Only the withdrawal may be written, and only with who withdrew it.
+    await expect(db.query(`UPDATE "sign"."SignSmsCertification" SET wording_version='2027-01-01' WHERE id=$1`, [id])).rejects.toThrow(/append-only|check/i);
+    await expect(db.query(`UPDATE "sign"."SignSmsCertification" SET withdrawn_at=now() WHERE id=$1`, [id])).rejects.toThrow(/withdrawal_check|violates check/i);
+    await db.query(`UPDATE "sign"."SignSmsCertification" SET withdrawn_at=now(), withdrawn_by_user_id=$2 WHERE id=$1`, [id, ACTOR]);
+    await expect(db.query(`UPDATE "sign"."SignSmsCertification" SET withdrawn_by_user_id=$2 WHERE id=$1`, [id, randomUUID()])).rejects.toThrow(/immutable|check/i);
+    await expect(db.query(`DELETE FROM "sign"."SignSmsCertification" WHERE id=$1`, [id])).rejects.toThrow(/never deleted|check/i);
+    // Withdrawn ⇒ a new certification is allowed.
+    await expect(insert(randomUUID())).resolves.toBeDefined();
+  });
+
+  it('SignUserSmsConsent: E.164 number, channel vocabulary, consent only on a verified number', async () => {
+    const put = (vals: { phone?: string; verified?: boolean; consented?: boolean; channel?: string | null }) =>
+      db.query(
+        `INSERT INTO "sign"."SignUserSmsConsent" (user_id, phone_e164, phone_verified_at, consented_at, consent_wording_version, consent_channel)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [
+          randomUUID(),
+          vals.phone ?? '+14155550123',
+          vals.verified ? new Date() : null,
+          vals.consented ? new Date() : null,
+          vals.consented ? '2026-11-28' : null,
+          vals.channel === undefined ? (vals.consented ? 'WEB' : null) : vals.channel,
+        ],
+      );
+    await expect(put({})).resolves.toBeDefined();
+    await expect(put({ verified: true, consented: true, channel: 'SIGNUP' })).resolves.toBeDefined();
+    await expect(put({ phone: '4155550123' })).rejects.toThrow(/phone_check|violates check/i);
+    await expect(put({ verified: true, consented: true, channel: 'EMAIL' })).rejects.toThrow(/channel_check|violates check/i);
+    await expect(put({ verified: false, consented: true })).rejects.toThrow(/consent_shape_check|violates check/i);
+  });
+
+  it('SignUserSmsCode keeps only a code hash, with a status vocabulary', async () => {
+    const cols = await db.query(`SELECT column_name FROM information_schema.columns WHERE table_schema='sign' AND table_name='SignUserSmsCode'`);
+    const names = cols.rows.map((x) => x.column_name);
+    expect(names).toContain('code_hash');
+    expect(names).not.toContain('code');
+    expect(names).not.toContain('phone_e164');
+    await expect(
+      db.query(`INSERT INTO "sign"."SignUserSmsCode" (id, user_id, phone_hash, code_hash, status, expires_at) VALUES ($1,$2,'h','c','NONSENSE', now())`, [randomUUID(), randomUUID()]),
+    ).rejects.toThrow(/status_check|violates check/i);
   });
 });
