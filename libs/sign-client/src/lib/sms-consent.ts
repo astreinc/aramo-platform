@@ -122,7 +122,7 @@ export const SMS_CONSENT_COPY = {
   remove: 'Remove number',
   signupTitle: 'Get signing requests by text',
   signupIntro: 'Add your mobile number so people who send you documents can text you. You can change this any time in Settings.',
-  skip: 'Skip',
+  skip: 'Not now',
   sendFlowNotCertified: SMS_NOT_CERTIFIED_NOTE,
 } as const;
 
