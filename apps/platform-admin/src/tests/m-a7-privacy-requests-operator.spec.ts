@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AuthContextType } from '@aramo/auth';
-import type { PrivacyRequestRecord, PrivacyRequestService, PrivacySubjectService } from '@aramo/identity';
+import type { IdentityDependencyInspector, PrivacyRequestRecord, PrivacyRequestService, PrivacySubjectService } from '@aramo/identity';
 import type { SignPrivacyRepository } from '@aramo/sign';
 
 import { PlatformPrivacyRequestsController } from '../app/platform/platform-privacy-requests.controller.js';
@@ -49,7 +49,7 @@ function setup(rec: PrivacyRequestRecord, legal_hold = false) {
     view: vi.fn((r: PrivacyRequestRecord) => ({ reference: r.reference, status: r.status })),
   } as unknown as PrivacyRequestService;
   const subjects = { context: vi.fn(async () => ({ legal_hold })) } as unknown as PrivacySubjectService;
-  const ctl = new PlatformPrivacyRequestsController(requests, subjects, {} as SignPrivacyRepository);
+  const ctl = new PlatformPrivacyRequestsController(requests, subjects, {} as SignPrivacyRepository, {} as IdentityDependencyInspector);
   return { ctl, requests };
 }
 
@@ -88,8 +88,9 @@ describe('platform privacy-request operator actions (M-A7 §3)', () => {
     await expect(ctl.deny('r1', { note: 'x' }, auth('recruiter'), 'rq')).rejects.toMatchObject({ statusCode: 403 });
   });
 
-  it('an executing deletion completes itself; the operator cannot complete it by hand', async () => {
-    const { ctl } = setup(record({ status: 'EXECUTING' }));
-    await expect(ctl.complete('r1', { note: 'done' }, auth(), 'rq')).rejects.toMatchObject({ context: { details: { reason: 'privacy_execution_in_progress' } } });
+  it('an executing deletion completes itself; the operator cannot complete it by hand (PRIV-ADMIN-1 OD-1)', async () => {
+    const { ctl, requests } = setup(record({ status: 'EXECUTING' }));
+    await expect(ctl.complete('r1', { note: 'done' }, auth(), 'rq')).rejects.toMatchObject({ statusCode: 409, context: { details: { reason: 'privacy_deletion_completes_by_execution' } } });
+    expect(requests.transition).not.toHaveBeenCalled();
   });
 });

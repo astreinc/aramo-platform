@@ -22,6 +22,8 @@
 // All 7 statuses render (SENT included). Sorting is latest activity first; search
 // matches the subject. The last-activity range (M-A4 §3.2) is applied HERE, on the
 // device, over the rows already loaded: the server's `days` filters by creation date.
+import { listSignRoute, type ListSignRow } from '@aramo/sign-client';
+
 import type { LocalDraft } from '../../state/draftStore';
 import {
   END_STATUSES,
@@ -258,11 +260,8 @@ export function awaitingYou(row: AgreementRow): boolean {
  * (`can_self_sign_now`): "Sign now" opens a SELF session on the sender envelope.
  */
 export function selfSignNow(row: AgreementRow): boolean {
-  return (
-    row.kind === 'sent' &&
-    OPEN_STATUSES.has(row.status) &&
-    (row.item as { can_self_sign_now?: boolean }).can_self_sign_now === true
-  );
+  // LIST-SELF-SIGN-1 — the shared rule (web ≡ app): a self-sign session comes first.
+  return row.kind === 'sent' && listSignRoute({ ...(row.item as ListSignRow), status: row.status }) === 'self';
 }
 
 /**
@@ -270,7 +269,9 @@ export function selfSignNow(row: AgreementRow): boolean {
  * `my_inbox_item_id` (a binding id or a discovered-item handle), or null (open Needs me).
  */
 export function inboxItemToSign(row: AgreementRow): string | null {
-  return awaitingYou(row) && row.kind === 'sent' ? (row.item.my_inbox_item_id ?? null) : null;
+  // LIST-SELF-SIGN-1 — the shared rule; the server sets my_inbox_item_id and awaiting_you together.
+  if (row.kind !== 'sent' || !awaitingYou(row)) return null;
+  return listSignRoute({ ...(row.item as ListSignRow), status: row.status }) === 'inbox' ? (row.item.my_inbox_item_id ?? null) : null;
 }
 
 function waitingForOthers(row: AgreementRow): boolean {

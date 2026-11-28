@@ -258,6 +258,9 @@ function checkRepo(inputs: Inputs = readRepoInputs()): Issue[] {
     // Aramo Sign Mobile (M-A3) — the per-user surface (feed, devices, preferences,
     // saved signature).
     ['/v1/sign/me/', 'sign-service:3003'],
+    // SIGN-FREE-PARITY-1 S7 — the user's own folders; S2 — the Personal sender's phone step-up.
+    ['/v1/sign/folders', 'sign-service:3003'],
+    ['/v1/sign/personal/step-up/', 'sign-service:3003'],
     ['/v1/signup/sign/', 'platform-admin:3002'],
     ['/v1/tenant/domain-verification', 'api:3000'],
     ['/v1/domain-verification/delegate', 'api:3000'],

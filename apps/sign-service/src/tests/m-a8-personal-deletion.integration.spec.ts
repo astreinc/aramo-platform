@@ -471,9 +471,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     expect(await links(p.user)).toBe(1);
     expect(await tenantStatus(p.tenant)).toBe('CLOSED');
 
-    // The worker retries: the pool user is gone now (answer: not_found) — the retry completes.
+    // PRIV-ADMIN-1 OD-4 — the first retry waits its 1-minute back-off.
+    const failedAt = Date.now();
+    expect(await module.get(SignPrivacyExecutionWorker).tick(new Date(failedAt))).toBe(0);
+    expect((await row(ref))['status']).toBe('EXECUTING');
+    // The worker retries after the back-off: the pool user is gone now (answer: not_found) — the retry completes.
     pool.retireAnswers.push('not_found');
-    expect(await module.get(SignPrivacyExecutionWorker).tick()).toBe(1);
+    expect(await module.get(SignPrivacyExecutionWorker).tick(new Date(failedAt + 2 * 60_000))).toBe(1);
     expect((await row(ref))['status']).toBe('COMPLETED');
     expect(await userRow(p.user)).toEqual({ is_active: false, email: `retired+${p.user}@invalid.aramo` });
     expect(await links(p.user)).toBe(0);

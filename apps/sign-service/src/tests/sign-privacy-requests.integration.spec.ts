@@ -426,6 +426,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     const env = await seedEnvelopes(b.tenant, b.user);
     const colleague = await member(b.tenant, 'sign_sender');
     await seedUserData(b.tenant, colleague.user);
+    const signersBefore = await n(`SELECT count(*) AS n FROM "sign"."Signer" s JOIN "sign"."SignatureEnvelope" v ON v.id = s.envelope_id WHERE v.tenant_id=$1`, [b.tenant]);
 
     const res = await create(b, { request_type: 'DELETION', confirm: 'DELETE' });
     expect(res.status).toBe(201);
@@ -472,6 +473,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     expect(retired).not.toContain(`sub-${b.user}`);
     expect(await convenienceCount(b.tenant, colleague.user)).toBe(6);
     expect(await liveSessions(colleague.user)).toBe(1);
+    // PRIV-ADMIN-1 OD-3 / AC-9 — the member's Sign roles stay (access removal is the
+    // organization's route, M-A8 §2.3); the colleague's roles and the shared envelopes'
+    // signers are unchanged.
+    expect(await signRoles()).toBe(1);
+    expect(await n(`SELECT count(*) AS n FROM identity."UserTenantMembershipRole" mr JOIN identity."UserTenantMembership" m ON m.id = mr.membership_id WHERE m.user_id=$1`, [colleague.user])).toBe(1);
+    expect(await n(`SELECT count(*) AS n FROM "sign"."Signer" s JOIN "sign"."SignatureEnvelope" v ON v.id = s.envelope_id WHERE v.tenant_id=$1`, [b.tenant])).toBe(signersBefore);
+    expect((await row(res.body.reference))['completion_evidence']).toMatchObject({ path: 'business_member', sign_access: 'organization_administered' });
   });
 
   it('flag ON — a non-owner member of a PERSONAL tenant is a Business subject (M-A8 §2.1): DELETION referred, never executed', async () => {
@@ -563,6 +571,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     expect((await row(v.body.reference))['status']).toBe('COMPLETED');
     expect(await liveSessions(p.user)).toBe(0);
     expect(await tenantStatus(p.tenant)).toBe('CLOSED');
+  });
+
+  it('web — PRIV-ADMIN-1 OD-11: a Business member DELETION is referred to the subject organization on verify, as in-app, and never executed', async () => {
+    process.env[FLAG] = '1';
+    const b = await account('BUSINESS');
+    await seedUserData(b.tenant, b.user);
+    const mailsBefore = mails.length;
+    expect((await http().post('/v1/sign/privacy-requests/start').send({ email: b.email, request_type: 'DELETION' })).status).toBe(202);
+    const link = /#token=([A-Za-z0-9_-]+)/.exec(mails.slice(mailsBefore)[0]?.text ?? '');
+    expect(link).not.toBeNull();
+    const v = await http().post('/v1/sign/privacy-requests/verify').send({ token: link?.[1] });
+    expect(v.status).toBe(200);
+    expect(v.body).toMatchObject({ channel: 'WEB', subject_kind: 'BUSINESS_MEMBER', status: 'REFERRED_TO_ORGANIZATION', referred_to_organization: true });
+    expect((await row(v.body.reference))['referred_tenant_id']).toBe(b.tenant);
+    expect((await events(v.body.reference)).map((e) => e.to_status)).toEqual(['RECEIVED', 'IDENTITY_VALIDATED', 'DATA_INVENTORY', 'REFERRED_TO_ORGANIZATION']);
+    await module.get(SignPrivacyExecutionWorker).tick();
+    expect((await row(v.body.reference))['status']).toBe('REFERRED_TO_ORGANIZATION');
+    expect(await liveSessions(b.user)).toBe(1);
   });
 
   it('DB guards — events are append-only; requests are never deleted; a terminal status is final', async () => {

@@ -75,6 +75,7 @@ describe('PlatformShell — permission-filtered rail (handoff §2, §3.3)', () =
       'Review queue',
       'Pilot invites',
       'Abuse reports',
+      'Requests',
       'Registry',
       'Review queue',
       'Proposals',
@@ -93,7 +94,7 @@ describe('PlatformShell — permission-filtered rail (handoff §2, §3.3)', () =
     const nav = railNav();
     expect(within(nav).getByText('Operations')).toBeInTheDocument();
     expect(within(nav).getByText('Skills')).toBeInTheDocument();
-    for (const gone of ['Sign Personal', 'Matching', 'Documents', 'Platform']) {
+    for (const gone of ['Sign Personal', 'Privacy', 'Matching', 'Documents', 'Platform']) {
       expect(within(nav).queryByText(gone)).toBeNull();
     }
     expect(within(nav).queryByRole('link', { name: 'Pilot invites' })).toBeNull();
@@ -108,6 +109,9 @@ describe('PlatformShell — permission-filtered rail (handoff §2, §3.3)', () =
     expect(within(nav).getByRole('link', { name: 'Pilot invites' })).toBeInTheDocument();
     // M-A7 §5.2 — the abuse-report queue (every sender), same scope.
     expect(within(nav).getByRole('link', { name: 'Abuse reports' })).toHaveAttribute('href', '/sign-abuse-reports');
+    // PRIV-ADMIN-1 (OD-8, OD-9) — Privacy › Requests, same scope.
+    expect(within(nav).getByText('Privacy')).toBeInTheDocument();
+    expect(within(nav).getByRole('link', { name: 'Requests' })).toHaveAttribute('href', '/privacy-requests');
     expect(within(nav).getByRole('link', { name: 'Platform admins' })).toBeInTheDocument();
     await screen.findByText('Maya Okafor');
   });
@@ -138,6 +142,8 @@ describe('PlatformShell — nav model', () => {
     expect(navKeyFor('/skills/proposals/pp_1')).toBe('proposals');
     expect(navKeyFor('/document-templates/dt_1')).toBe('templates');
     expect(navKeyFor('/admins')).toBe('admins');
+    expect(navKeyFor('/privacy-requests')).toBe('privacyRequests');
+    expect(navKeyFor('/privacy-requests/pr_1')).toBe('privacyRequests');
   });
 
   it('builds crumbs that end in the entity name', () => {
@@ -151,6 +157,12 @@ describe('PlatformShell — nav model', () => {
     expect(crumbsFor('/tenants/new', 'ignored')[2]).toEqual({ label: 'Provision tenant' });
     expect(crumbsFor('/skills/review-queue', null)).toEqual([{ label: 'Skills' }, { label: 'Review queue' }]);
     expect(crumbsFor('/admins', null)).toEqual([{ label: 'Platform' }, { label: 'Platform admins' }]);
+    expect(crumbsFor('/privacy-requests', null)).toEqual([{ label: 'Privacy' }, { label: 'Requests' }]);
+    expect(crumbsFor('/privacy-requests/pr_1', 'PR-AB12-CD34-EF56')).toEqual([
+      { label: 'Privacy' },
+      { label: 'Requests', to: '/privacy-requests' },
+      { label: 'PR-AB12-CD34-EF56' },
+    ]);
   });
 
   it('drops empty groups', () => {

@@ -4,6 +4,7 @@ import { Input } from '@aramo/fe-foundation';
 import {
   EMAIL_CODE_OPTION,
   PDF_PICKER_TYPES,
+  PICKER_TYPES,
   PHONE_STEP_UP_REASON,
   REFUSAL_COPY,
   SIGNERS_FULL_MESSAGE,
@@ -19,6 +20,7 @@ import {
   sendFeaturesOf,
   templateAccess,
   titleFromFilename,
+  wordUploadEnabled,
   SIGN_SUBJECT_PREFIX,
   AUTO_REMINDER_COPY,
 } from '@aramo/sign-client';
@@ -66,8 +68,9 @@ import { readinessOf } from './readiness';
 // the wizard or the editor (falls through to the read-only detail).
 
 // Client Rule Consolidation C3 (audit row 25) — the file check is @aramo/sign-client's
-// checkPickedFile (leading bytes, 25 MB). Word upload stays an Aramo Sign app feature
-// (C4 parity record), so the web never allows Word here.
+// checkPickedFile (leading bytes, 25 MB). WEB-WORD-1 (LOCKED 2026-11-27, amends the C4 parity
+// record): as in the app, a .docx / .doc is accepted while the sender context reports
+// word_conversion_enabled; the server converts it to PDF on upload (20 MB Word limit).
 async function headOf(f: Blob): Promise<Uint8Array> {
   return new Uint8Array(await f.slice(0, 1024).arrayBuffer());
 }
@@ -195,17 +198,20 @@ function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange:
   // fillable PDF", "Apply text tags") are for authoring Document templates (the console form
   // Studio), not for sending: the Send wizard uploads without them, as the app does.
 
+  // WEB-WORD-1 — the server's Word capability (sender context), the same rule as the app.
+  const wordAllowed = wordUploadEnabled(ctx);
+
   const upload = async (files: FileList | File[]) => {
     setError('');
     setNotices([]);
     const removed: string[] = [];
     for (const f of Array.from(files)) {
-      const check = checkPickedFile({ name: f.name, mimeType: f.type, size: f.size, head: await headOf(f), wordAllowed: false });
+      const check = checkPickedFile({ name: f.name, mimeType: f.type, size: f.size, head: await headOf(f), wordAllowed: wordAllowed });
       if (!check.ok) {
         setError(`${f.name}: ${check.message}`);
         continue;
       }
-      setBusy(`Uploading ${f.name}…`);
+      setBusy(check.word === true ? `Converting ${f.name} to PDF…` : `Uploading ${f.name}…`);
       try {
         const content_base64 = await fileToBase64(f);
         const up = await senderApi.upload(env.id, { filename: f.name, title: titleFromFilename(f.name), content_base64 });
@@ -269,10 +275,11 @@ function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange:
             <Input
               unstyled
               type="file"
-              accept={[...PDF_PICKER_TYPES, '.pdf'].join(',')}
+              accept={(wordAllowed ? [...PICKER_TYPES, '.pdf', '.docx', '.doc'] : [...PDF_PICKER_TYPES, '.pdf']).join(',')}
               multiple
               style={{ display: 'none' }}
-              aria-label="Upload PDF documents"
+              aria-label={wordAllowed ? 'Upload PDF or Word documents' : 'Upload PDF documents'}
+              data-testid="document-file-input"
               onChange={(e) => {
                 if (e.target.files !== null) void upload(e.target.files);
                 e.target.value = '';
@@ -281,8 +288,8 @@ function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange:
             <div style={{ fontSize: 22, color: 'var(--muted)' }}>
               <Icon name="upload" size={26} />
             </div>
-            <div style={{ fontWeight: 600, marginTop: 6 }}>Drop PDFs here or click to upload</div>
-            <div className="sg-muted">PDF files up to 25 MB each</div>
+            <div style={{ fontWeight: 600, marginTop: 6 }}>{wordAllowed ? 'Drop PDF or Word files here or click to upload' : 'Drop PDFs here or click to upload'}</div>
+            <div className="sg-muted">{wordAllowed ? 'PDF up to 25 MB, Word (.docx, .doc) up to 20 MB, converted to PDF' : 'PDF files up to 25 MB each'}</div>
           </label>
           {/* DOC-TEMPLATE-LIB-1 T-5 — start from one of the organization's document templates
               (shown only when the plan capability and the template permission allow it). */}

@@ -429,6 +429,8 @@ export {
   type PurgeLevel,
   type PurgeStateView,
 } from './lib/purge.js';
+// LIST-SELF-SIGN-1 — how Sign on a sent-envelope list row starts signing (web and the app).
+export { listSignRoute, type ListSignRoute, type ListSignRow } from './lib/list-sign-route.js';
 // SIGN-FREE-PARITY-1 S3 — the signer's one-time code (SMS or email): copy, routes, refusals.
 export {
   EMAIL_CODE_OPTION,

@@ -25,27 +25,38 @@ platform-admin; **production state: unset = OFF** (2026-10-28 deployment record;
 PO authorization). While OFF, the `execute` route answers 409 `privacy_execution_disabled`, and
 `aramo-deletion-replay.sh` always reports `verdict=EMPTY`.
 
-## 2. Operator surface — API only (no console page yet)
+## 2. Operator surface — console: Privacy › Requests (PRIV-ADMIN-1)
 
-All under `https://admin.aramo.ai/platform/privacy-requests`, platform session, scope
-`platform:tenant:lifecycle:manage` (controller header lists them):
+admin.aramo.ai → **Privacy › Requests** (scope `platform:tenant:lifecycle:manage`, super_admin). The queue
+filters by status, type, subject kind, channel, assigned to me, overdue and reference, flags overdue and
+"Failing" requests, and shows whether deletion execution is on. The request page shows the inventory, the
+completion evidence ("not verified" where a count could not be read), the impact preview for a deletion and
+the full history. Every action is confirmed in a dialog; Execute deletion needs the request reference typed.
+The contact email stays hidden until **Reveal contact**, which is recorded with the operator's id.
+
+Rules the console and API enforce (PRIV-ADMIN-1, LOCKED 76abfbb5):
+- A DELETION completes only by execution (`complete` answers 409 `privacy_deletion_completes_by_execution`).
+  Close a referred Business deletion with Execute (member path) or Deny.
+- ACCESS / EXPORT / CORRECTION are closed with **Record outcome** from DATA_INVENTORY or a referral; the note
+  is shown to the requester. **Add note** is internal and never shown.
+- Refer only to the subject's own organization (409 `privacy_referral_tenant_mismatch` otherwise).
+- A failing execution retries after 1, 5, 15 and 60 minutes; after the 5th failure it returns to the queue
+  (`EXECUTION_GAVE_UP`). **Return to queue** does the same by hand.
+- A Business member's execution no longer removes Sign roles (organization-administered, M-A8 §2.3).
+- A web Business-member DELETION is referred to the member's organization on verify, as in-app.
+
+The API behind it, all under `https://admin.aramo.ai/platform/privacy-requests` (OpenAPI `platform.yaml`):
 
 | Route | Effect |
 |---|---|
-| `GET /platform/privacy-requests?status=&request_type=&include_closed=` | Open queue ordered by due date; response says `execution_enabled` |
-| `GET /platform/privacy-requests/:id` | Detail, events, decrypted contact email (web requests) |
-| `POST /platform/privacy-requests` | Record a request received by email/post (`request_type`, `subject_kind`, agent proof checked) |
-| `POST …/:id/assign` `{operator_id?}` | Responsible operator |
-| `POST …/:id/validate` `{note}` | `RECEIVED → IDENTITY_VALIDATED` (operator-recorded identity check) |
-| `POST …/:id/inventory` `{note}` | `→ DATA_INVENTORY` (counts only; records `legal_hold`) |
-| `POST …/:id/refer` `{organization_tenant_id?}` | `→ REFERRED_TO_ORGANIZATION` |
-| `POST …/:id/execute` `{note}` | `→ EXECUTING` (DELETION only; refused while execution is OFF or the organisation is on legal hold); sign-service's worker executes |
-| `POST …/:id/complete` / `deny` / `cancel` `{note}` | Terminal states, with the operator's note |
-
-**UNVERIFIED / gap:** platform-web has no privacy page (`apps/platform-web/src` has no route for it), so
-an operator calls these with the platform session from a signed-in admin.aramo.ai browser session (for
-example the browser's developer console `fetch` with `credentials: 'include'`). This has not been
-rehearsed. Until a console page exists, record every call and response status in the request's case file.
+| `GET /…?status=&request_type=&include_closed=&limit=&channel=&subject_kind=&assigned=me&overdue=&reference=` | Queue; items carry `failing`; response says `execution_enabled` |
+| `GET /:id` | Detail, events, `contact_present`, `attempts` (no contact email) |
+| `POST …/:id/reveal-contact` | The contact email; writes `CONTACT_REVEALED` |
+| `POST …/:id/note` `{note}` | Internal note (`NOTE`) |
+| `GET …/:id/preview` | Read-only impact preview for a deletion: `path`, `reasons`, `dependencies`, `unknown_sources` |
+| `POST …/:id/return-to-queue` `{note}` | `EXECUTING → DATA_INVENTORY` (`RETURNED_TO_QUEUE`) |
+| `POST /…` | Record a request received by email/post |
+| `POST …/:id/assign` · `validate` · `inventory` · `refer` · `execute` · `complete` · `deny` · `cancel` | As before, with the rules above |
 
 ## 3. Daily queue procedure (privacy team; staffing is a PO item)
 
