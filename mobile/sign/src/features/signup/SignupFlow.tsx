@@ -26,6 +26,7 @@ import { ProviderButton } from '../../components/ProviderButton';
 import { ARAMO_SIGN_IDENTITY } from '../../config/identity';
 import { useTheme } from '../../theme';
 import { utf8Encode } from '../../util/bytes';
+import { markSmsSignupOffer } from '../account/smsConsent';
 import { CheckRow } from '../inbox/ui';
 import { TextField } from '../send/ui';
 import { platformCrypto, type CryptoPort } from '../../auth/pkce';
@@ -168,7 +169,11 @@ export function SignupFlow(deps: SignupDeps) {
             api={deps.api}
             crypto={deps.crypto ?? platformCrypto}
             {...(step.notice !== undefined ? { notice: step.notice } : {})}
-            onDone={(held) => setStep({ k: 'done', held: held === undefined ? hint : held })}
+            onDone={(held) => {
+              // SMS-CONSENT-1 §2 — offer the optional text-messages step after the sign-in.
+              markSmsSignupOffer();
+              setStep({ k: 'done', held: held === undefined ? hint : held });
+            }}
             onRefused={() => setStep({ k: 'review' })}
             onNotOpen={() => setStep({ k: 'notOpen' })}
             onRestart={restart}

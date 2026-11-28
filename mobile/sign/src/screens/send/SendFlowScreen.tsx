@@ -22,6 +22,7 @@ import { hasContent } from '../../features/send/draftModel';
 import { SAVED_ON_DEVICE, SAVED_TO_DRAFTS, sentToast } from '../../features/send/sendCopy';
 import { templatesAvailable } from '../../features/send/templates';
 import { messagingOffered, sendFeaturesOf } from '../../features/send/sendFeatures';
+import { smsCertificationPending } from '../../features/account/smsConsent';
 import { startSelfSign } from '../../features/send/selfSign';
 import { createSenderApi } from '../../features/send/senderApi';
 import { stepBlocker, stepTarget } from '../../features/send/sendFlowController';
@@ -59,7 +60,12 @@ export function SendFlowScreen({ navigation, route }: Props) {
   const selfIntent = FEATURES.selfSign && params.intent === 'self';
   const context = useSenderContext();
   // B2 — the per-recipient options the server reports available.
-  const features = useMemo(() => sendFeaturesOf(context.data), [context.data]);
+  // SMS-CONSENT-1 §2 — until the organization certifies, a note replaces the SMS options.
+  const smsPending = smsCertificationPending(context.data);
+  const features = useMemo(() => {
+    const f = sendFeaturesOf(context.data);
+    return smsCertificationPending(context.data) ? { ...f, sms: false, smsCode: false } : f;
+  }, [context.data]);
   const { controller, state } = useSendFlow(
     {
       ...params,
@@ -252,6 +258,7 @@ export function SendFlowScreen({ navigation, route }: Props) {
         online={online}
         inPerson={inPerson}
         features={features}
+        smsPending={smsPending}
       />
     ) : state.step === 'review' ? (
       <ReviewStep

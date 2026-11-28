@@ -66,6 +66,7 @@ import {
 } from '../../features/account/SignInMethodsSection';
 import { isPersonalAccountOwner } from '../../features/account/privacy';
 import { PrivacyRequestsSection } from '../../features/account/PrivacyRequestsSection';
+import { TextMessagesSection } from '../../features/account/TextMessagesSection';
 import { signedInWithLabel } from '../../features/account/profile';
 import {
   acceptPending,
@@ -532,6 +533,9 @@ export function AccountScreen() {
             last
           />
         </Card>
+
+        {/* SMS-CONSENT-1 §2 (R-3) — the person's own number and text consent (only while available). */}
+        <TextMessagesSection workspace={workspace} />
 
         <SectionTitle>Push notifications</SectionTitle>
         <Card style={styles.card0}>
