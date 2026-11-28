@@ -29,6 +29,9 @@ describe('step-up code', () => {
 describe('copy', () => {
   it('names the masked number and the refusals have plain copy', () => {
     expect(PHONE_STEP_UP_COPY.sentTo('+1••••••••67')).toBe('We texted a code to +1••••••••67. It expires in 10 minutes.');
+    // SMS-OPTIN-1 — the 10DLC opt-in disclosure (rates + STOP).
+    expect(PHONE_STEP_UP_COPY.smsDisclosure).toContain('Msg & data rates may apply');
+    expect(PHONE_STEP_UP_COPY.smsDisclosure).toContain('Reply STOP to opt out');
     expect(refusalMessage({ code: 'VALIDATION_ERROR', reason: 'personal_code_rate_limited', status: 400 })).toBe('Wait a minute before asking for another code.');
     expect(refusalMessage({ code: 'ESIGN_SEND_UNAVAILABLE', reason: 'step_up_sms_not_sent', status: 503 })).toBe('We couldn’t send the text. Try again in a few minutes.');
     expect(refusalMessage({ code: 'VALIDATION_ERROR', reason: 'phone_in_use', status: 400 })).toBe('This number is already used by another account. Use a different number.');

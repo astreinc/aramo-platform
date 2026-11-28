@@ -29,6 +29,8 @@ describe('PhoneStepUpCard', () => {
     const onVerified = jest.fn();
     render(<PhoneStepUpCard workspace={ws} onVerified={onVerified} />);
     await screen.findByText('We’ll text a code to +1••••••••67.');
+    // SMS-OPTIN-1 — the 10DLC opt-in disclosure sits with the button.
+    expect(screen.getByTestId('step-up-disclosure')).toHaveTextContent('We’ll text one 6-digit code to this number. Msg & data rates may apply. Reply STOP to opt out.');
     fireEvent.press(screen.getByTestId('step-up-send'));
     await screen.findByText('We texted a code to +1••••••••67. It expires in 10 minutes.');
     expect(call).toHaveBeenCalledWith('/v1/sign/personal/step-up/send', 'post', { body: {} });

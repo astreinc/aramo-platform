@@ -28,6 +28,8 @@ describe('PhoneStepUpPanel', () => {
     const onVerified = vi.fn();
     render(<PhoneStepUpPanel status={STATUS} onVerified={onVerified} onClose={vi.fn()} />);
     expect(screen.getByText('We’ll text a code to +1••••••••67.', { exact: false })).toBeInTheDocument();
+    // SMS-OPTIN-1 — the 10DLC opt-in disclosure sits with the button.
+    expect(screen.getByTestId('step-up-disclosure').textContent).toBe('We’ll text one 6-digit code to this number. Msg & data rates may apply. Reply STOP to opt out.');
     fireEvent.click(screen.getByTestId('step-up-send'));
     await screen.findByText('We texted a code to +1••••••••67. It expires in 10 minutes.');
     expect(calls.find((c) => c.url.endsWith('/send'))?.body).toEqual({});

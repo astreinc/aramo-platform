@@ -88,6 +88,9 @@ export function PhoneStepUpPanel({ status, onVerified, onClose }: { status: Phon
             <Btn variant="primary" type="submit" disabled={busy || (stage.entering && phone.trim() === '')} data-testid="step-up-send">
               {busy ? C.sending : C.sendCode}
             </Btn>
+            <p className="sg-help" style={{ margin: 0 }} data-testid="step-up-disclosure">
+              {C.smsDisclosure}
+            </p>
           </form>
         ) : null}
         {stage.k === 'code' ? (
